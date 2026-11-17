@@ -49,7 +49,7 @@ function speedColorExpr() {
 }
 
 export class RideMap {
-  constructor(container, basemap) {
+  constructor(container, basemap, attributions = []) {
     this.basemap = basemap || { mode: 'none', styles: {} };
     this.track = EMPTY;
     this.stops = EMPTY;
@@ -61,7 +61,7 @@ export class RideMap {
       style: blankStyle(theme()),
       center: UZHHOROD,
       zoom: 12,
-      attributionControl: { compact: true },
+      attributionControl: { compact: true, customAttribution: attributions },
     });
     this.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
     this.map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right');

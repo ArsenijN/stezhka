@@ -45,7 +45,7 @@ class ProcessedRide:
     report: CleanReport
 
 
-def _climb(values: list[float | None], hysteresis: float) -> tuple[float | None, float | None]:
+def climb(values: list[float | None], hysteresis: float) -> tuple[float | None, float | None]:
     """Total ascent/descent, ignoring wiggles smaller than `hysteresis`."""
     vals = [v for v in values if v is not None]
     if len(vals) < 2:
@@ -82,7 +82,7 @@ def process(track: ParsedTrack, params: Params = Params()) -> ProcessedRide:
         b.dist = dist
 
     moving_speeds = [p.speed for p in pts if p.moving]
-    up, down = _climb([p.ele_smooth for p in pts], params.ele_hysteresis_m)
+    up, down = climb([p.ele_smooth for p in pts], params.ele_hysteresis_m)
     summary = Summary(
         started_at=pts[0].t,
         ended_at=pts[-1].t,

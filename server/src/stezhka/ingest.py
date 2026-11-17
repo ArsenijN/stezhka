@@ -56,6 +56,11 @@ def _ride_values(track: ParsedTrack, pr: ProcessedRide) -> dict:
         "dropped_points": pr.report.dropped,
         "speed_source": pr.report.speed_source,
         "processing_version": PROCESSING_VERSION,
+        # derived points are rewritten, so enrichment must run again
+        "ele_source": "gps",
+        "dem_version": 0,
+        "weather_version": 0,
+        "enrich_error": None,
     }
 
 
@@ -143,7 +148,8 @@ class InboxWatcher:
     A file is imported only once its size and mtime are unchanged across two polls.
     """
 
-    def __init__(self, connect, raw_dir: Path, inbox: Path, poll_s: float = 30.0):
+    def __init__(self, connect, raw_dir: Path, inbox: Path, poll_s: float = 30.0, on_import=None):
+        self._on_import = on_import  # called (no args) after a scan that created new rides
         self._connect = connect
         self._raw_dir = raw_dir
         self._inbox = inbox
@@ -177,6 +183,8 @@ class InboxWatcher:
                     log.warning("inbox: cannot import %s: %s", p, e)
         finally:
             conn.close()
+        if self._on_import and any(r.created for r in results):
+            self._on_import()
         return results
 
     def _run(self) -> None:

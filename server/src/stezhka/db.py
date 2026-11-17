@@ -92,6 +92,49 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX stops_ride ON stops(ride_id);
     """,
+    # 2: enrichment - DEM elevation and weather
+    """
+    ALTER TABLE points ADD COLUMN ele_dem REAL;
+    ALTER TABLE rides ADD COLUMN ele_source TEXT NOT NULL DEFAULT 'gps';
+    ALTER TABLE rides ADD COLUMN dem_version INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE rides ADD COLUMN weather_version INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE rides ADD COLUMN enrich_error TEXT;
+    ALTER TABLE rides ADD COLUMN enrich_attempt_at REAL;
+
+    CREATE TABLE weather_hourly (
+        cell_lat         REAL NOT NULL,
+        cell_lon         REAL NOT NULL,
+        t                REAL NOT NULL,
+        temperature_c    REAL,
+        humidity_pct     REAL,
+        precipitation_mm REAL,
+        rain_mm          REAL,
+        snowfall_cm      REAL,
+        weather_code     INTEGER,
+        wind_speed_mps   REAL,
+        wind_dir_deg     REAL,
+        wind_gust_mps    REAL,
+        source           TEXT NOT NULL,
+        fetched_at       REAL NOT NULL,
+        PRIMARY KEY (cell_lat, cell_lon, t)
+    ) WITHOUT ROWID;
+
+    CREATE TABLE ride_weather (
+        ride_id          INTEGER PRIMARY KEY REFERENCES rides(id) ON DELETE CASCADE,
+        temperature_c    REAL,
+        humidity_pct     REAL,
+        wind_speed_mps   REAL,
+        wind_dir_deg     REAL,
+        wind_gust_mps    REAL,
+        headwind_mps     REAL,
+        precip_ride_mm   REAL,
+        precip_before_mm REAL,
+        wetness_mm       REAL,
+        wetness          TEXT,
+        weather_code     INTEGER,
+        source           TEXT NOT NULL
+    );
+    """,
 ]
 
 

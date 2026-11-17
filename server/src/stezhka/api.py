@@ -26,7 +26,10 @@ from . import __version__, auth, basemap
 from .config import Config
 from .db import connect
 from .gpx import GpxError
+from .dem import ATTRIBUTION as DEM_ATTRIBUTION
+from .enrich import EnrichWorker
 from .ingest import MAX_FILE_BYTES, InboxWatcher, import_bytes
+from .weather import ATTRIBUTION as WEATHER_ATTRIBUTION
 
 log = logging.getLogger(__name__)
 
@@ -66,7 +69,7 @@ class BikeBody(BaseModel):
 _RIDE_COLUMNS = (
     "r.id, r.name, r.activity, r.started_at, r.ended_at, r.elapsed_s, r.moving_s, r.distance_m,"
     " r.avg_moving_mps, r.max_mps, r.ascent_m, r.descent_m, r.point_count, r.speed_source,"
-    " r.bike_id, b.name AS bike_name, r.notes,"
+    " r.bike_id, b.name AS bike_name, r.notes, r.ele_source, r.enrich_error,"
     " (SELECT COUNT(*) FROM stops s WHERE s.ride_id = r.id AND s.kind = 'stop') AS stop_count"
 )
 
@@ -139,17 +142,27 @@ def create_app(cfg: Config) -> FastAPI:
     def open_db() -> sqlite3.Connection:
         return connect(cfg.db_path)
 
+    worker = EnrichWorker(open_db, cfg.dem_dir) if cfg.enrich else None
+
+    def imported() -> None:
+        if worker:
+            worker.wake()
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         open_db().close()  # create/migrate the schema before serving
         watcher = None
+        if worker:
+            worker.start()
         if cfg.inbox_dir:
-            watcher = InboxWatcher(open_db, cfg.raw_dir, cfg.inbox_dir, cfg.inbox_poll_s)
+            watcher = InboxWatcher(open_db, cfg.raw_dir, cfg.inbox_dir, cfg.inbox_poll_s, on_import=imported)
             watcher.start()
             log.info("watching inbox %s every %.0fs", cfg.inbox_dir, cfg.inbox_poll_s)
         yield
         if watcher:
             watcher.stop()
+        if worker:
+            worker.stop()
 
     app = FastAPI(title="Stezhka", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None)
     app.add_middleware(_SelectiveGZip)
@@ -243,7 +256,9 @@ def create_app(cfg: Config) -> FastAPI:
             }
         else:
             bm = {"mode": "none", "styles": {}}
-        return {"basemap": bm}
+        # Data-source credits (proper names / licence notices: shown as-is, not translated).
+        # Always listed: stored rides may carry DEM/weather data even if enrichment is now off.
+        return {"basemap": bm, "attributions": [DEM_ATTRIBUTION, WEATHER_ATTRIBUTION]}
 
     @app.get("/api/basemap/style/{theme}")
     def basemap_style(theme: str, _conn: sqlite3.Connection = Depends(require_auth)):
@@ -278,13 +293,20 @@ def create_app(cfg: Config) -> FastAPI:
             (ride_id,),
         ).fetchall()
         ride["stops"] = [dict(s) for s in stops]
+        w = conn.execute(
+            "SELECT temperature_c, humidity_pct, wind_speed_mps, wind_dir_deg, wind_gust_mps, headwind_mps,"
+            " precip_ride_mm, precip_before_mm, wetness_mm, wetness, weather_code, source"
+            " FROM ride_weather WHERE ride_id = ?",
+            (ride_id,),
+        ).fetchone()
+        ride["weather"] = dict(w) if w else None
         return ride
 
     @app.get("/api/rides/{ride_id}/points")
     def get_points(ride_id: int, conn: sqlite3.Connection = Depends(require_auth)):
         _ride(conn, ride_id)
         rows = conn.execute(
-            "SELECT t, round(lat, 6), round(lon, 6), round(COALESCE(ele_smooth, ele), 1), round(speed, 2),"
+            "SELECT t, round(lat, 6), round(lon, 6), round(COALESCE(ele_dem, ele_smooth, ele), 1), round(speed, 2),"
             " round(dist, 1), moving, segment FROM points WHERE ride_id = ? ORDER BY idx",
             (ride_id,),
         ).fetchall()
@@ -306,7 +328,9 @@ def create_app(cfg: Config) -> FastAPI:
             res = await run_in_threadpool(import_bytes, conn, cfg.raw_dir, bytes(data), name[:255] if name else None)
         except GpxError:
             raise ApiError(400, ErrorCode.INVALID_GPX) from None
-        if not res.created:
+        if res.created:
+            imported()
+        else:
             response.status_code = 200
         return {"id": res.ride_id, "created": res.created}
 

@@ -36,7 +36,28 @@ def _cmd_import(cfg: Config, args) -> int:
             failed += 1
             continue
         print(f"{'new ' if res.created else 'dup '} ride {res.ride_id}  {p}")
+    if cfg.enrich and not args.no_enrich:
+        _enrich(cfg, conn)
     return 1 if failed else 0
+
+
+def _enrich(cfg: Config, conn) -> int:
+    from .dem import Dem
+    from .enrich import enrich_all_pending
+
+    n = enrich_all_pending(conn, Dem(cfg.dem_dir))
+    errors = conn.execute("SELECT id, enrich_error FROM rides WHERE enrich_error IS NOT NULL").fetchall()
+    print(f"enriched {n} ride(s) with DEM elevation and weather")
+    for r in errors:
+        print(f"  ride {r['id']}: {r['enrich_error']}", file=sys.stderr)
+    return 1 if errors else 0
+
+
+def _cmd_enrich(cfg: Config, args) -> int:
+    conn = connect(cfg.db_path)
+    if args.all:
+        conn.execute("UPDATE rides SET dem_version = 0, weather_version = 0, enrich_error = NULL")
+    return _enrich(cfg, conn)
 
 
 def _cmd_reprocess(cfg: Config, args) -> int:
@@ -104,6 +125,9 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("serve", help="run the web server")
     p = sub.add_parser("import", help="import GPX files")
     p.add_argument("files", nargs="+")
+    p.add_argument("--no-enrich", action="store_true", help="skip DEM elevation and weather")
+    p = sub.add_parser("enrich", help="add DEM elevation and weather to rides that lack it")
+    p.add_argument("--all", action="store_true", help="redo every ride")
     p = sub.add_parser("reprocess", help="rebuild derived data from raw files")
     p.add_argument("--all", action="store_true", help="all rides, not only outdated ones")
     sub.add_parser("set-password", help="set the login password")
@@ -130,6 +154,7 @@ def main(argv: list[str] | None = None) -> int:
         "bike-add": _cmd_bike_add,
         "backup": _cmd_backup,
         "basemap": _cmd_basemap,
+        "enrich": _cmd_enrich,
     }[args.cmd]
     return handler(cfg, args)
 

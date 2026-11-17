@@ -27,6 +27,26 @@ export function elevation(m) {
   return nf({ style: 'unit', unit: 'meter', maximumFractionDigits: 0 }).format(m);
 }
 
+export function temperature(c) {
+  if (c == null) return '–';
+  return nf({ style: 'unit', unit: 'celsius', maximumFractionDigits: 0 }).format(c);
+}
+
+export function windSpeed(mps) {
+  if (mps == null) return '–';
+  return nf({ style: 'unit', unit: 'meter-per-second', maximumFractionDigits: 1 }).format(Math.abs(mps));
+}
+
+export function precipitation(mm) {
+  if (mm == null) return '–';
+  return nf({ style: 'unit', unit: 'millimeter', maximumFractionDigits: 1 }).format(mm);
+}
+
+/** Meteorological degrees -> one of n, ne, e, se, s, sw, w, nw (locale keys weather.dir.*). */
+export function compass(deg) {
+  return ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'][Math.round(((deg % 360) + 360) % 360 / 45) % 8];
+}
+
 export function duration(s) {
   if (s == null) return '–';
   const total = Math.round(s);

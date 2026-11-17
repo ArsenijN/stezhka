@@ -8,6 +8,8 @@ STEZHKA_PORT          bind port                                        (default:
 STEZHKA_COOKIE_SECURE send session cookie only over HTTPS: 1/0          (default: 1)
 STEZHKA_BASEMAP_REMOTE if no local basemap extract exists, load map tiles from
                       tiles.openfreemap.org instead of a blank map: 1/0 (default: 0)
+STEZHKA_ENRICH        add DEM elevation (Copernicus, AWS Open Data) and weather (Open-Meteo,
+                      coarse ~10 km cell only) to rides; needs internet: 1/0 (default: 1)
 STEZHKA_WEB_DIR       static web UI folder                             (default: <repo>/web)
 """
 
@@ -36,6 +38,11 @@ class Config:
     port: int = 8470
     cookie_secure: bool = True
     basemap_remote: bool = False
+    enrich: bool = True
+
+    @property
+    def dem_dir(self) -> Path:
+        return self.data_dir / "dem"
 
     @property
     def db_path(self) -> Path:
@@ -62,4 +69,5 @@ class Config:
             port=int(e.get("STEZHKA_PORT", "8470")),
             cookie_secure=_bool(e.get("STEZHKA_COOKIE_SECURE"), True),
             basemap_remote=_bool(e.get("STEZHKA_BASEMAP_REMOTE"), False),
+            enrich=_bool(e.get("STEZHKA_ENRICH"), True),
         )

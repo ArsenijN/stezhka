@@ -131,7 +131,31 @@ function renderStats() {
       stat(t('stats.climb'), `↑ ${fmt.elevation(r.ascent_m)}  ↓ ${fmt.elevation(r.descent_m)}`),
       stat(t('stats.stops'), t('stats.stop_summary', { count: stops.length, time: fmt.duration(stopTime) })),
     ),
-    el('p', { class: 'note' }, t('stats.elevation_source_gps')),
+    weatherRow(r),
+    el('p', { class: 'note' }, r.ele_source === 'dem' ? t('stats.elevation_source_dem') : t('stats.elevation_source_gps')),
+  );
+}
+
+function windText(w) {
+  const base = t('weather.wind', { speed: fmt.windSpeed(w.wind_speed_mps), dir: t(`weather.dir.${fmt.compass(w.wind_dir_deg)}`) });
+  const h = w.headwind_mps;
+  if (h == null) return base;
+  if (h > 0.5) return `${base} · ${t('weather.headwind', { speed: fmt.windSpeed(h) })}`;
+  if (h < -0.5) return `${base} · ${t('weather.tailwind', { speed: fmt.windSpeed(h) })}`;
+  return `${base} · ${t('weather.crosswind')}`;
+}
+
+function weatherRow(r) {
+  const w = r.weather;
+  if (!w) {
+    return el('p', { class: 'note' }, r.enrich_error ? t('weather.unavailable') : t('weather.pending'));
+  }
+  let road = t(`weather.wetness.${w.wetness}`);
+  if (w.precip_ride_mm >= 0.1) road += ` · ${t('weather.rain_during', { amount: fmt.precipitation(w.precip_ride_mm) })}`;
+  return el('div', { class: 'stat-grid weather' },
+    stat(t('stats.temperature'), fmt.temperature(w.temperature_c)),
+    stat(t('stats.wind'), windText(w)),
+    stat(t('stats.road'), road),
   );
 }
 
@@ -216,7 +240,7 @@ async function startApp() {
   if (!appStarted) {
     appStarted = true;
     state.config = await api('config');
-    state.map = new RideMap($('map'), state.config.basemap);
+    state.map = new RideMap($('map'), state.config.basemap, state.config.attributions);
     $('map-note').hidden = state.config.basemap.mode !== 'none';
     state.chart = new ProfileChart($('chart'));
     state.chart.onHover((i) => state.map.setCursor(i));

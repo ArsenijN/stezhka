@@ -58,6 +58,20 @@ Re-run it now and then to pick up OSM edits. Without a local extract the map sho
 background; set `STEZHKA_BASEMAP_REMOTE=1` to fall back to `tiles.openfreemap.org` instead (off by
 default; when off, the Content-Security-Policy does not even allow it).
 
+## Elevation and weather
+
+After import, rides are enriched in the background (CLI: inline after `stezhka import`, or
+`stezhka enrich [--all]`):
+
+* **Elevation** from the Copernicus GLO-30 terrain model (AWS Open Data). Tiles of ~45 MB are
+  downloaded on first use into `$STEZHKA_DATA_DIR/dem/`. It is a surface model: in forests it reads
+  treetop height, and bridges dip to water level until map matching lands.
+* **Weather** from [Open-Meteo](https://open-meteo.com): temperature, wind (with the head/tailwind
+  component along your track), rain during and before the ride, and a road-wetness estimate.
+  Only a ~10 km grid cell and the date leave the server, never the track.
+
+`STEZHKA_ENRICH=0` disables both, and with them every outbound request except `stezhka basemap`.
+
 ## Deployment
 
 See [deploy/stezhka.service](deploy/stezhka.service). Stezhka binds to `127.0.0.1:8470` and is

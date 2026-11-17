@@ -9,7 +9,7 @@ from stezhka.db import connect
 
 @pytest.fixture
 def cfg(tmp_path):
-    return Config(data_dir=tmp_path, cookie_secure=False)
+    return Config(data_dir=tmp_path, cookie_secure=False, enrich=False)
 
 
 @pytest.fixture

@@ -30,7 +30,11 @@
     "stops": "Stops",
     "stop_summary_one": "{{count}} stop, {{time}}",
     "stop_summary_other": "{{count}} stops, {{time}}",
-    "elevation_source_gps": "Elevation comes from phone GPS and is rough until terrain-model (DEM) enrichment is added."
+    "elevation_source_gps": "Elevation comes from phone GPS and is rough: terrain data has not been added to this ride.",
+    "temperature": "Temperature",
+    "wind": "Wind",
+    "road": "Road",
+    "elevation_source_dem": "Elevation from the Copernicus terrain model. It measures the surface, so in forests and between buildings it can read treetop or roof height."
   },
   "chart": {
     "elevation": "Elevation",
@@ -64,5 +68,30 @@
     "bike_exists": "A bike with this name already exists.",
     "network": "The server is unreachable.",
     "unknown": "Something went wrong."
+  },
+  "weather": {
+    "wind": "{{speed}} from {{dir}}",
+    "headwind": "headwind {{speed}}",
+    "tailwind": "tailwind {{speed}}",
+    "crosswind": "mostly crosswind",
+    "rain_during": "rain during the ride: {{amount}}",
+    "pending": "Weather and terrain data are being added…",
+    "unavailable": "Weather data is not available for this ride yet.",
+    "dir": {
+      "n": "N",
+      "ne": "NE",
+      "e": "E",
+      "se": "SE",
+      "s": "S",
+      "sw": "SW",
+      "w": "W",
+      "nw": "NW"
+    },
+    "wetness": {
+      "dry": "dry",
+      "damp": "damp",
+      "wet": "wet",
+      "soaked": "soaked"
+    }
   }
 }

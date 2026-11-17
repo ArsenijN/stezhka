@@ -126,7 +126,7 @@ def make_client(tmp_path, monkeypatch):
     clients = []
 
     def make(**kw):
-        cfg = Config(data_dir=tmp_path, cookie_secure=False, **kw)
+        cfg = Config(data_dir=tmp_path, cookie_secure=False, enrich=False, **kw)
         c = TestClient(api.create_app(cfg))
         c.__enter__()
         clients.append(c)

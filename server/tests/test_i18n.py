@@ -101,6 +101,10 @@ def test_dynamic_namespaces_are_complete():
         assert f"errors.{code}" in en, f"errors.{code}"
     for kind in ("stop", "break", "pause"):
         assert f"stop_kind.{kind}" in en
+    for d in ("n", "ne", "e", "se", "s", "sw", "w", "nw"):
+        assert f"weather.dir.{d}" in en
+    for w in ("dry", "damp", "wet", "soaked"):  # weather.wetness_class()
+        assert f"weather.wetness.{w}" in en
 
 
 @pytest.mark.parametrize("code", [c for c in locale_codes() if c != "en"])
