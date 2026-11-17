@@ -49,10 +49,22 @@ GPS altitude is shown with a visible "rough" note. GLO-30 is cleaner than SRTM a
 towns; a few 1°×1° tiles cover Zakarpattia (~tens of MB).
 
 ## D7. Web: FastAPI + plain ES modules + vendored MapLibre, no build step
-Nothing to rebuild when Node tooling changes. MapLibre is vendored (`web/vendor/maplibre-gl`, see
-VERSION) so the UI loads no third-party scripts. The basemap defaults to OpenFreeMap (free, no key);
-self-hosting a Protomaps `.pmtiles` extract of the region later removes that last external request.
+Nothing to rebuild when Node tooling changes. MapLibre and pmtiles.js are vendored
+(`web/vendor/*`, see each VERSION) so the UI loads no third-party scripts.
 Strict CSP, HttpOnly SameSite=Strict session cookie, scrypt password, server-side sessions.
+
+## D7a. Basemap: regional extract of the OpenFreeMap planet, served by Stezhka
+OFM publishes its planet as a single PMTiles file in immutable dated folders. `stezhka basemap`
+reads only the directories and tiles inside a bbox via merged HTTP range requests (Python, using
+the `pmtiles` library's format code; no extra binary on the server) and writes a clustered regional
+PMTiles file. Identical tiles are deduplicated by exact source offset, not by hash. Styles are OFM's
+own (positron for light, dark for dark mode), rewritten to point at local tiles, sprites, and fonts;
+the low-zoom raster relief layer is dropped (327 MB for zooms 0-6 is not worth it).
+Considered and rejected: Planetiler/tilemaker builds (need hundreds of MB of ocean/Natural Earth
+inputs and diverge from OFM styles), Protomaps basemap (different schema, so not OFM styles).
+Remote OFM is an opt-in fallback (`STEZHKA_BASEMAP_REMOTE=1`); when it is off, the CSP blocks it.
+`/basemap/` requires login (a 60 s session cache avoids a DB hit per range request) and is never
+gzip-encoded, because compressing 206 responses breaks range reads.
 
 ## D8. i18n: keys, never English-as-key
 `t('stats.distance')` with i18next JSON v4 locale files (`web/locales/*.json`): nested keys,

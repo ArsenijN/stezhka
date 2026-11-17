@@ -36,6 +36,9 @@
     "elevation": "Elevation",
     "aria": "Elevation and speed along the ride. Hover to see the position on the map."
   },
+  "map": {
+    "no_basemap": "The background map is not installed. On the server run: stezhka basemap"
+  },
   "legend": {
     "title": "Speed, km/h"
   },

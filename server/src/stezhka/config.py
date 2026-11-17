@@ -6,7 +6,8 @@ STEZHKA_INBOX_POLL_S  inbox poll interval in seconds                   (default:
 STEZHKA_HOST          bind address                                     (default: 127.0.0.1)
 STEZHKA_PORT          bind port                                        (default: 8470)
 STEZHKA_COOKIE_SECURE send session cookie only over HTTPS: 1/0          (default: 1)
-STEZHKA_BASEMAP_STYLE MapLibre style URL for the background map
+STEZHKA_BASEMAP_REMOTE if no local basemap extract exists, load map tiles from
+                      tiles.openfreemap.org instead of a blank map: 1/0 (default: 0)
 STEZHKA_WEB_DIR       static web UI folder                             (default: <repo>/web)
 """
 
@@ -16,7 +17,6 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_BASEMAP = "https://tiles.openfreemap.org/styles/positron"
 _REPO_WEB = Path(__file__).resolve().parents[3] / "web"
 
 
@@ -35,7 +35,7 @@ class Config:
     host: str = "127.0.0.1"
     port: int = 8470
     cookie_secure: bool = True
-    basemap_style: str = DEFAULT_BASEMAP
+    basemap_remote: bool = False
 
     @property
     def db_path(self) -> Path:
@@ -44,6 +44,10 @@ class Config:
     @property
     def raw_dir(self) -> Path:
         return self.data_dir / "raw"
+
+    @property
+    def basemap_dir(self) -> Path:
+        return self.data_dir / "basemap"
 
     @classmethod
     def from_env(cls) -> Config:
@@ -57,5 +61,5 @@ class Config:
             host=e.get("STEZHKA_HOST", "127.0.0.1"),
             port=int(e.get("STEZHKA_PORT", "8470")),
             cookie_secure=_bool(e.get("STEZHKA_COOKIE_SECURE"), True),
-            basemap_style=e.get("STEZHKA_BASEMAP_STYLE", DEFAULT_BASEMAP),
+            basemap_remote=_bool(e.get("STEZHKA_BASEMAP_REMOTE"), False),
         )

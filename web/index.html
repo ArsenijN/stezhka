@@ -8,6 +8,7 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="vendor/maplibre-gl/maplibre-gl.css">
   <link rel="stylesheet" href="css/style.css">
+  <script src="vendor/pmtiles/pmtiles.js"></script>
   <script type="module" src="js/app.js"></script>
 </head>
 <body>
@@ -49,6 +50,7 @@
       <div class="map-wrap">
         <div id="map" class="map"></div>
         <div id="legend" class="legend"></div>
+        <p id="map-note" class="map-note" data-i18n="map.no_basemap" hidden></p>
       </div>
       <div class="chart-wrap">
         <canvas id="chart" role="img" data-i18n-attr="aria-label:chart.aria"></canvas>

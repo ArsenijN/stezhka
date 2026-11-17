@@ -74,7 +74,31 @@ def _cmd_backup(cfg: Config, args) -> int:
     return 0
 
 
+def _bbox(s: str) -> tuple[float, float, float, float]:
+    try:
+        w, so, e, n = (float(v) for v in s.split(","))
+    except ValueError:
+        raise argparse.ArgumentTypeError("expected W,S,E,N in degrees") from None
+    if not (-180 <= w < e <= 180 and -85 <= so < n <= 85):
+        raise argparse.ArgumentTypeError("bbox out of range or inverted")
+    return w, so, e, n
+
+
+def _cmd_basemap(cfg: Config, args) -> int:
+    from . import basemap
+
+    stats = basemap.fetch_region(cfg.basemap_dir, args.bbox, args.maxzoom, args.version, args.dry_run)
+    verb = "would download" if args.dry_run else "wrote"
+    print(f"{verb} {stats.tiles_found} tiles ({stats.unique_tiles} unique, {stats.tile_bytes / 1e6:.1f} MB)")
+    if not args.dry_run and not args.skip_assets:
+        basemap.fetch_assets(cfg.basemap_dir)
+        print(f"styles, sprites and fonts updated in {cfg.basemap_dir}")
+    return 0 if stats.tiles_found else 1
+
+
 def main(argv: list[str] | None = None) -> int:
+    from .basemap import DEFAULT_BBOX, DEFAULT_MAXZOOM
+
     parser = argparse.ArgumentParser(prog="stezhka", description="Stezhka ride statistics server")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("serve", help="run the web server")
@@ -88,6 +112,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--kind", help="e.g. mtb, trekking, gravel")
     p = sub.add_parser("backup", help="write a consistent database snapshot")
     p.add_argument("dest")
+    p = sub.add_parser("basemap", help="download/refresh the self-hosted map (OpenFreeMap extract)")
+    p.add_argument("--bbox", type=_bbox, default=DEFAULT_BBOX, help="W,S,E,N (default: Zakarpattia + margin)")
+    p.add_argument("--maxzoom", type=int, default=DEFAULT_MAXZOOM)
+    p.add_argument("--version", help="OpenFreeMap planet build, e.g. 20261115_080022_pt (default: latest)")
+    p.add_argument("--dry-run", action="store_true", help="only report what would be downloaded")
+    p.add_argument("--skip-assets", action="store_true", help="do not refresh styles/sprites/fonts")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -99,6 +129,7 @@ def main(argv: list[str] | None = None) -> int:
         "set-password": _cmd_set_password,
         "bike-add": _cmd_bike_add,
         "backup": _cmd_backup,
+        "basemap": _cmd_basemap,
     }[args.cmd]
     return handler(cfg, args)
 

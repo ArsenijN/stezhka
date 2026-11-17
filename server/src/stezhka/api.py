@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import __version__, auth
+from . import __version__, auth, basemap
 from .config import Config
 from .db import connect
 from .gpx import GpxError
@@ -72,16 +72,67 @@ _RIDE_COLUMNS = (
 
 POINT_FIELDS = ["t", "lat", "lon", "ele", "speed", "dist", "moving", "segment"]
 
-_SECURITY_HEADERS = {
-    "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "no-referrer",
-    "X-Frame-Options": "DENY",
-    "Content-Security-Policy": (
-        "default-src 'self'; script-src 'self'; worker-src 'self' blob:; "
-        "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; "
-        "connect-src 'self' https:; font-src 'self' https:; frame-ancestors 'none'; base-uri 'none'"
-    ),
-}
+def security_headers_for(cfg: Config) -> dict[str, str]:
+    # Third-party origins are allowed only when the remote basemap fallback is switched on.
+    remote = f" {basemap.OFM_REMOTE_ORIGIN}" if cfg.basemap_remote else ""
+    return {
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+        "X-Frame-Options": "DENY",
+        "Content-Security-Policy": (
+            "default-src 'self'; script-src 'self'; worker-src 'self' blob:; "
+            f"style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:{remote}; "
+            f"connect-src 'self'{remote}; font-src 'self'; frame-ancestors 'none'; base-uri 'none'"
+        ),
+    }
+
+
+BASEMAP_PREFIX = "/basemap/"
+
+
+class _SelectiveGZip:
+    """GZip everything except /basemap/: tiles are already compressed, and gzipping 206 partial
+    responses would break the HTTP Range reads PMTiles relies on."""
+
+    def __init__(self, app):
+        self.app = app
+        self.gzip = GZipMiddleware(app, minimum_size=1024)
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"].startswith(BASEMAP_PREFIX):
+            await self.app(scope, receive, send)
+        else:
+            await self.gzip(scope, receive, send)
+
+
+class _SessionCache:
+    """Short-lived cache of valid session tokens, so each tile range request does not hit SQLite.
+    A logged-out session may keep map-tile access for at most TTL seconds; nothing else."""
+
+    TTL = 60.0
+
+    def __init__(self, open_db):
+        self._open_db = open_db
+        self._ok: dict[str, float] = {}
+
+    def check(self, token: str | None) -> bool:
+        if not token:
+            return False
+        now = time.monotonic()
+        if self._ok.get(token, 0) > now:
+            return True
+        conn = self._open_db()
+        try:
+            valid = auth.session_valid(conn, token)
+        finally:
+            conn.close()
+        if valid:
+            if len(self._ok) > 1000:
+                self._ok.clear()
+            self._ok[token] = now + self.TTL
+        else:
+            self._ok.pop(token, None)
+        return valid
 
 
 def create_app(cfg: Config) -> FastAPI:
@@ -101,15 +152,24 @@ def create_app(cfg: Config) -> FastAPI:
             watcher.stop()
 
     app = FastAPI(title="Stezhka", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None)
-    app.add_middleware(GZipMiddleware, minimum_size=1024)
+    app.add_middleware(_SelectiveGZip)
+    headers = security_headers_for(cfg)
+    sessions = _SessionCache(open_db)
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
+        path = request.url.path
+        if path.startswith(BASEMAP_PREFIX):
+            token = request.cookies.get(auth.SESSION_COOKIE)
+            if not await run_in_threadpool(sessions.check, token):
+                return JSONResponse({"error": ErrorCode.UNAUTHORIZED}, status_code=401, headers=headers)
         resp = await call_next(request)
-        for k, v in _SECURITY_HEADERS.items():
+        for k, v in headers.items():
             resp.headers.setdefault(k, v)
-        if request.url.path.startswith("/api/"):
+        if path.startswith("/api/"):
             resp.headers.setdefault("Cache-Control", "no-store")
+        elif path.startswith(BASEMAP_PREFIX):
+            resp.headers.setdefault("Cache-Control", "private, max-age=86400")
         return resp
 
     @app.exception_handler(ApiError)
@@ -169,7 +229,27 @@ def create_app(cfg: Config) -> FastAPI:
 
     @app.get("/api/config")
     def config(_conn: sqlite3.Connection = Depends(require_auth)):
-        return {"basemap_style": cfg.basemap_style}
+        if basemap.local_available(cfg.basemap_dir):
+            bm = {
+                "mode": "local",
+                "styles": {theme: f"api/basemap/style/{theme}" for theme in basemap.STYLES},
+                "base_token": basemap.BASE_TOKEN,
+                "region": basemap.region_info(cfg.basemap_dir),
+            }
+        elif cfg.basemap_remote:
+            bm = {
+                "mode": "remote",
+                "styles": {t: basemap.OFM_REMOTE_STYLE.format(style=s) for t, s in basemap.STYLES.items()},
+            }
+        else:
+            bm = {"mode": "none", "styles": {}}
+        return {"basemap": bm}
+
+    @app.get("/api/basemap/style/{theme}")
+    def basemap_style(theme: str, _conn: sqlite3.Connection = Depends(require_auth)):
+        if theme not in basemap.STYLES or not basemap.local_available(cfg.basemap_dir):
+            raise ApiError(404, ErrorCode.NOT_FOUND)
+        return basemap.local_style(cfg.basemap_dir, theme)
 
     # --- rides ---------------------------------------------------------------------------------
 
@@ -261,6 +341,9 @@ def create_app(cfg: Config) -> FastAPI:
     def unknown_api(_rest: str):
         raise ApiError(404, ErrorCode.NOT_FOUND)
 
+    # Basemap files (PMTiles, fonts, sprites). Auth is enforced by the middleware above;
+    # StaticFiles answers HTTP Range requests with 206, which PMTiles needs.
+    app.mount(BASEMAP_PREFIX.rstrip("/"), StaticFiles(directory=cfg.basemap_dir, check_dir=False), name="basemap")
     if cfg.web_dir.is_dir():
         app.mount("/", StaticFiles(directory=cfg.web_dir, html=True), name="web")
     return app

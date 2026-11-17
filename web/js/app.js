@@ -216,7 +216,8 @@ async function startApp() {
   if (!appStarted) {
     appStarted = true;
     state.config = await api('config');
-    state.map = new RideMap($('map'), state.config.basemap_style);
+    state.map = new RideMap($('map'), state.config.basemap);
+    $('map-note').hidden = state.config.basemap.mode !== 'none';
     state.chart = new ProfileChart($('chart'));
     state.chart.onHover((i) => state.map.setCursor(i));
     state.map.onHover((i) => state.chart.setCursor(i));
