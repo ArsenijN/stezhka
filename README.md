@@ -21,7 +21,7 @@ docs/     design notes and decisions
 ## Development
 
 ```sh
-python3 -m venv ~/.venvs/stezhka            # outside the repo: NTFS/fuse drives break venv symlinks
+python3 -m venv ~/.venvs/stezhka            # outside the repo: exFAT/NTFS (fuseblk) drives break venv symlinks
 ~/.venvs/stezhka/bin/pip install -e 'server[dev]'
 cd server && ~/.venvs/stezhka/bin/pytest
 
@@ -90,3 +90,16 @@ The reverse proxy must:
 Large parts of this project were written with an AI coding assistant (Claude, by Anthropic) under
 the maintainer's direction. Design decisions are recorded in [docs/decisions.md](docs/decisions.md);
 all code is reviewed, tested, and owned by the maintainer.
+
+## License
+
+Copyright (C) 2026 Arsenii Nochevnyi (ArsenijN)
+
+Stezhka is free software: you can redistribute it and/or modify it under the terms of the
+[GNU Affero General Public License](LICENSE) as published by the Free Software Foundation, either
+version 3 of the License, or (at your option) any later version. If you run a modified version as a
+network service, you must offer its users the corresponding source code.
+
+Bundled third-party code keeps its own license: MapLibre GL JS and PMTiles (BSD-3-Clause, see
+`web/vendor/*/LICENSE.txt`). Map data © OpenStreetMap contributors (ODbL), tiles by OpenFreeMap /
+OpenMapTiles, elevation © Copernicus DEM, weather by Open-Meteo (CC BY 4.0).

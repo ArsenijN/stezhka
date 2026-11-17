@@ -8,3 +8,6 @@ __pycache__/
 .pytest_cache/
 build/
 dist/
+
+# per-user Claude Code settings (hook exemptions etc.)
+.claude/settings.local.json
