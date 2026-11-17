@@ -1,0 +1,10 @@
+# runtime data (tracks reveal home/work locations: never commit)
+data/
+*.sqlite3
+*.sqlite3-*
+__pycache__/
+*.egg-info/
+.venv/
+.pytest_cache/
+build/
+dist/

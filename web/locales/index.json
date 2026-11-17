@@ -1,0 +1,6 @@
+{
+  "locales": [
+    { "code": "en", "name": "English" },
+    { "code": "uk", "name": "Українська" }
+  ]
+}

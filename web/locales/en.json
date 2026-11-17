@@ -1,0 +1,65 @@
+{
+  "login": {
+    "title": "Sign in",
+    "password": "Password",
+    "submit": "Sign in",
+    "no_password_hint": "No password is set yet. On the server run: stezhka set-password"
+  },
+  "actions": {
+    "upload": "Upload GPX",
+    "logout": "Log out"
+  },
+  "settings": {
+    "language": "Language"
+  },
+  "rides": {
+    "title": "Rides",
+    "count_one": "{{count}} ride",
+    "count_other": "{{count}} rides",
+    "empty": "No rides yet. Upload a GPX file, or let the server watch your OpenTracks export folder.",
+    "untitled": "Ride",
+    "select": "Pick a ride on the left."
+  },
+  "stats": {
+    "distance": "Distance",
+    "moving_time": "Moving time",
+    "elapsed_time": "Total time",
+    "avg_speed": "Avg moving speed",
+    "max_speed": "Max speed",
+    "climb": "Up / down",
+    "stops": "Stops",
+    "stop_summary_one": "{{count}} stop, {{time}}",
+    "stop_summary_other": "{{count}} stops, {{time}}",
+    "elevation_source_gps": "Elevation comes from phone GPS and is rough until terrain-model (DEM) enrichment is added."
+  },
+  "chart": {
+    "elevation": "Elevation",
+    "aria": "Elevation and speed along the ride. Hover to see the position on the map."
+  },
+  "legend": {
+    "title": "Speed, km/h"
+  },
+  "stop_kind": {
+    "stop": "Stop",
+    "break": "Break",
+    "pause": "Recording paused"
+  },
+  "upload": {
+    "done_one": "Imported {{count}} new ride.",
+    "done_other": "Imported {{count}} new rides.",
+    "duplicate": "Already imported: {{name}}",
+    "failed": "Could not import {{name}}: {{reason}}"
+  },
+  "errors": {
+    "unauthorized": "Please sign in again.",
+    "bad_credentials": "Wrong password.",
+    "no_password_set": "No password is set on the server.",
+    "not_found": "Not found.",
+    "invalid_gpx": "This file is not a usable GPX track.",
+    "file_too_large": "The file is too large.",
+    "bad_request": "Invalid request.",
+    "bike_exists": "A bike with this name already exists.",
+    "network": "The server is unreachable.",
+    "unknown": "Something went wrong."
+  }
+}

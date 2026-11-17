@@ -1,0 +1,71 @@
+{
+  "login": {
+    "title": "Вхід",
+    "password": "Пароль",
+    "submit": "Увійти",
+    "no_password_hint": "Пароль ще не встановлено. На сервері виконайте: stezhka set-password"
+  },
+  "actions": {
+    "upload": "Завантажити GPX",
+    "logout": "Вийти"
+  },
+  "settings": {
+    "language": "Мова"
+  },
+  "rides": {
+    "title": "Поїздки",
+    "count_one": "{{count}} поїздка",
+    "count_few": "{{count}} поїздки",
+    "count_many": "{{count}} поїздок",
+    "count_other": "{{count}} поїздки",
+    "empty": "Поїздок ще немає. Завантажте GPX-файл або налаштуйте сервер стежити за папкою експорту OpenTracks.",
+    "untitled": "Поїздка",
+    "select": "Оберіть поїздку ліворуч."
+  },
+  "stats": {
+    "distance": "Відстань",
+    "moving_time": "Час у русі",
+    "elapsed_time": "Загальний час",
+    "avg_speed": "Сер. швидкість у русі",
+    "max_speed": "Макс. швидкість",
+    "climb": "Підйом / спуск",
+    "stops": "Зупинки",
+    "stop_summary_one": "{{count}} зупинка, {{time}}",
+    "stop_summary_few": "{{count}} зупинки, {{time}}",
+    "stop_summary_many": "{{count}} зупинок, {{time}}",
+    "stop_summary_other": "{{count}} зупинки, {{time}}",
+    "elevation_source_gps": "Висота взята з GPS телефона і буде неточною, доки не додамо цифрову модель рельєфу (DEM)."
+  },
+  "chart": {
+    "elevation": "Висота",
+    "aria": "Висота і швидкість уздовж маршруту. Наведіть, щоб побачити місце на мапі."
+  },
+  "legend": {
+    "title": "Швидкість, км/год"
+  },
+  "stop_kind": {
+    "stop": "Зупинка",
+    "break": "Перерва",
+    "pause": "Запис на паузі"
+  },
+  "upload": {
+    "done_one": "Імпортовано {{count}} нову поїздку.",
+    "done_few": "Імпортовано {{count}} нові поїздки.",
+    "done_many": "Імпортовано {{count}} нових поїздок.",
+    "done_other": "Імпортовано {{count}} нової поїздки.",
+    "duplicate": "Уже імпортовано: {{name}}",
+    "failed": "Не вдалося імпортувати {{name}}: {{reason}}"
+  },
+  "errors": {
+    "unauthorized": "Увійдіть ще раз.",
+    "bad_credentials": "Неправильний пароль.",
+    "no_password_set": "На сервері не встановлено пароль.",
+    "not_found": "Не знайдено.",
+    "invalid_gpx": "Цей файл не є придатним GPX-треком.",
+    "file_too_large": "Файл завеликий.",
+    "bad_request": "Некоректний запит.",
+    "bike_exists": "Велосипед з такою назвою вже є.",
+    "network": "Сервер недоступний.",
+    "unknown": "Щось пішло не так."
+  }
+}

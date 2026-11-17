@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Stezhka</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="vendor/maplibre-gl/maplibre-gl.css">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <div id="login" class="login" hidden>
+    <form id="login-form" class="login-card">
+      <div class="brand brand-lg"><img src="icon.svg" alt="" width="36" height="36"> Stezhka</div>
+      <h1 data-i18n="login.title"></h1>
+      <label for="pw" data-i18n="login.password"></label>
+      <input id="pw" type="password" autocomplete="current-password" required>
+      <button type="submit" class="btn primary" data-i18n="login.submit"></button>
+      <p id="login-error" class="error" role="alert"></p>
+      <p id="login-nopw" class="note" data-i18n="login.no_password_hint" hidden></p>
+    </form>
+  </div>
+
+  <div id="app" class="app" hidden>
+    <header class="topbar">
+      <a class="brand" href="#"><img src="icon.svg" alt="" width="24" height="24"> Stezhka</a>
+      <span class="spacer"></span>
+      <label class="btn">
+        <input id="upload" type="file" accept=".gpx,application/gpx+xml" multiple class="visually-hidden">
+        <span data-i18n="actions.upload"></span>
+      </label>
+      <select id="lang" class="btn" data-i18n-attr="aria-label:settings.language"></select>
+      <button id="logout" class="btn ghost" type="button" data-i18n="actions.logout"></button>
+    </header>
+
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <h2 data-i18n="rides.title"></h2>
+        <span id="ride-count" class="muted"></span>
+      </div>
+      <ul id="ride-list" class="ride-list"></ul>
+      <p id="no-rides" class="note" data-i18n="rides.empty" hidden></p>
+    </aside>
+
+    <main class="main">
+      <section id="stats" class="stats" aria-live="polite"></section>
+      <div class="map-wrap">
+        <div id="map" class="map"></div>
+        <div id="legend" class="legend"></div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="chart" role="img" data-i18n-attr="aria-label:chart.aria"></canvas>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
