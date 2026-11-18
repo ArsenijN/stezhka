@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import secrets
 import sqlite3
+import threading
 import time
 
 from .db import get_setting, set_setting
@@ -18,7 +19,7 @@ from .db import get_setting, set_setting
 SESSION_COOKIE = "stezhka_session"
 SESSION_TTL_S = 30 * 24 * 3600
 _SCRYPT = {"n": 2**14, "r": 8, "p": 1}  # ~16 MiB, ~50 ms on an old i3
-MIN_PASSWORD_LEN = 8
+MIN_PASSWORD_LEN = 12
 
 
 def hash_password(password: str) -> str:
@@ -54,6 +55,49 @@ def has_password(conn: sqlite3.Connection) -> bool:
 def check_password(conn: sqlite3.Connection, password: str) -> bool:
     stored = get_setting(conn, "password")
     return stored is not None and verify_password(stored, password)
+
+
+class LoginThrottle:
+    """In-memory brute-force protection for the single login.
+
+    * attempts are checked one at a time (with a 1 s delay on failure), so parallel connections
+      cannot multiply the guessing rate;
+    * an address with PER_IP_MAX failures within WINDOW_S is refused for WINDOW_S;
+    * GLOBAL_MAX failures from all addresses within WINDOW_S lock every login for WINDOW_S
+      (covers distributed guessing, and addresses hidden behind a CDN). The owner can lift that
+      early by restarting the service.
+
+    State is per process and resets on restart; that is acceptable for one user.
+    """
+
+    PER_IP_MAX = 5
+    GLOBAL_MAX = 30
+    WINDOW_S = 15 * 60
+
+    def __init__(self, clock=time.monotonic):
+        self._clock = clock
+        self._by_ip: dict[str, list[float]] = {}
+        self._all: list[float] = []
+        self.lock = threading.Lock()  # held by the caller around check + verify
+
+    def _recent(self, times: list[float]) -> list[float]:
+        cutoff = self._clock() - self.WINDOW_S
+        return [t for t in times if t > cutoff]
+
+    def blocked(self, ip: str) -> bool:
+        self._all = self._recent(self._all)
+        mine = self._by_ip[ip] = self._recent(self._by_ip.get(ip, []))
+        return len(mine) >= self.PER_IP_MAX or len(self._all) >= self.GLOBAL_MAX
+
+    def failed(self, ip: str) -> None:
+        now = self._clock()
+        self._by_ip.setdefault(ip, []).append(now)
+        self._all.append(now)
+        if len(self._by_ip) > 10_000:  # bound memory under a wide scan
+            self._by_ip = {k: v for k, v in self._by_ip.items() if self._recent(v)}
+
+    def succeeded(self, ip: str) -> None:
+        self._by_ip.pop(ip, None)
 
 
 def _token_hash(token: str) -> str:

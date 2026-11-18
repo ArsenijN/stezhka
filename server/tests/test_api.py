@@ -84,3 +84,33 @@ def test_security_headers_and_static(client):
     assert r.status_code == 200
     assert "default-src 'self'" in r.headers["content-security-policy"]
     assert r.headers["x-content-type-options"] == "nosniff"
+
+
+def test_login_lockout_per_address(client, cfg):
+    auth.set_password(connect(cfg.db_path), "correct horse")
+    for _ in range(auth.LoginThrottle.PER_IP_MAX):
+        assert client.post("/api/login", json={"password": "wrong guess!"}).status_code == 401
+    r = client.post("/api/login", json={"password": "correct horse"})  # even the right one
+    assert r.status_code == 429 and r.json() == {"error": "too_many_attempts"}
+
+
+def test_login_throttle_window_and_reset():
+    now = [0.0]
+    th = auth.LoginThrottle(clock=lambda: now[0])
+    for _ in range(th.PER_IP_MAX - 1):
+        th.failed("1.2.3.4")
+    assert not th.blocked("1.2.3.4")
+    th.succeeded("1.2.3.4")  # a successful login clears that address
+    for _ in range(th.PER_IP_MAX):
+        th.failed("1.2.3.4")
+    assert th.blocked("1.2.3.4") and not th.blocked("5.6.7.8")
+    now[0] += th.WINDOW_S + 1
+    assert not th.blocked("1.2.3.4")
+    for i in range(th.GLOBAL_MAX):  # distributed guessing locks everyone
+        th.failed(f"10.0.0.{i}")
+    assert th.blocked("5.6.7.8")
+
+
+def test_short_passwords_rejected(cfg):
+    with pytest.raises(ValueError):
+        auth.set_password(connect(cfg.db_path), "short-pass")

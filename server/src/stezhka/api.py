@@ -43,6 +43,7 @@ class ErrorCode(StrEnum):
     FILE_TOO_LARGE = "file_too_large"
     BAD_REQUEST = "bad_request"
     BIKE_EXISTS = "bike_exists"
+    TOO_MANY_ATTEMPTS = "too_many_attempts"
 
 
 class ApiError(Exception):
@@ -168,6 +169,7 @@ def create_app(cfg: Config) -> FastAPI:
     app.add_middleware(_SelectiveGZip)
     headers = security_headers_for(cfg)
     sessions = _SessionCache(open_db)
+    throttle = auth.LoginThrottle()
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -219,9 +221,17 @@ def create_app(cfg: Config) -> FastAPI:
     def login(body: LoginBody, request: Request, response: Response, conn: sqlite3.Connection = Depends(db)):
         if not auth.has_password(conn):
             raise ApiError(503, ErrorCode.NO_PASSWORD_SET)
-        if not auth.check_password(conn, body.password):
-            time.sleep(1.0)  # slows down guessing; runs in a worker thread
-            raise ApiError(401, ErrorCode.BAD_CREDENTIALS)
+        # Behind the reverse proxy, uvicorn's proxy_headers takes the client address from the
+        # X-Forwarded-For header that the proxy (127.0.0.1) sets.
+        ip = request.client.host if request.client else "unknown"
+        with throttle.lock:  # one password check at a time: parallel guessing gains nothing
+            if throttle.blocked(ip):
+                raise ApiError(429, ErrorCode.TOO_MANY_ATTEMPTS)
+            if not auth.check_password(conn, body.password):
+                throttle.failed(ip)
+                time.sleep(1.0)  # runs in a worker thread
+                raise ApiError(401, ErrorCode.BAD_CREDENTIALS)
+            throttle.succeeded(ip)
         token = auth.create_session(conn, request.headers.get("user-agent"))
         response.set_cookie(
             auth.SESSION_COOKIE,

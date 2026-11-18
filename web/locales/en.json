@@ -67,7 +67,8 @@
     "bad_request": "Invalid request.",
     "bike_exists": "A bike with this name already exists.",
     "network": "The server is unreachable.",
-    "unknown": "Something went wrong."
+    "unknown": "Something went wrong.",
+    "too_many_attempts": "Too many failed sign-in attempts. Try again in 15 minutes."
   },
   "weather": {
     "wind": "{{speed}} from {{dir}}",
