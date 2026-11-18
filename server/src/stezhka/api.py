@@ -69,7 +69,7 @@ class BikeBody(BaseModel):
 _RIDE_COLUMNS = (
     "r.id, r.name, r.activity, r.started_at, r.ended_at, r.elapsed_s, r.moving_s, r.distance_m,"
     " r.avg_moving_mps, r.max_mps, r.ascent_m, r.descent_m, r.point_count, r.speed_source,"
-    " r.bike_id, b.name AS bike_name, r.notes, r.ele_source, r.enrich_error,"
+    " r.bike_id, b.name AS bike_name, r.notes, r.ele_source, r.enrich_error, r.creator,"
     " (SELECT COUNT(*) FROM stops s WHERE s.ride_id = r.id AND s.kind = 'stop') AS stop_count"
 )
 

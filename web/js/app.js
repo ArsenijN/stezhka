@@ -75,6 +75,13 @@ async function onLogout() {
   showLogin(true);
 }
 
+// Recorders often name a track by its start time (OpenTracks: 2026-11-18T20:03+02); the date is
+// already shown, so such names are treated as untitled.
+const TIMESTAMP_NAME = /^\d{4}-\d{2}-\d{2}[T ]\d{1,2}[:_]\d{2}/;
+function rideTitle(r) {
+  return r.name && !TIMESTAMP_NAME.test(r.name) ? r.name : t('rides.untitled');
+}
+
 // --- ride list ----------------------------------------------------------------------------------
 
 function renderRideList() {
@@ -88,9 +95,10 @@ function renderRideList() {
     const item = el('li', {},
       el('a', { href: `#ride=${r.id}`, class: 'ride-item', 'aria-current': selected ? 'true' : 'false' },
         el('span', { class: 'ride-date' }, fmt.weekdayDate(r.started_at), ' ', fmt.time(r.started_at)),
-        el('span', { class: 'ride-name' }, r.name || t('rides.untitled')),
+        el('span', { class: 'ride-name' }, rideTitle(r)),
         el('span', { class: 'ride-meta' }, meta),
         r.bike_name ? el('span', { class: 'ride-bike' }, r.bike_name) : null,
+        r.creator ? el('span', { class: 'ride-source' }, r.creator) : null, // recording app name, as in the file
       ));
     list.append(item);
   }
@@ -120,7 +128,7 @@ function renderStats() {
   const stops = r.stops.filter((s) => s.kind === 'stop');
   const stopTime = stops.reduce((a, s) => a + (s.end_t - s.start_t), 0);
   box.append(
-    el('h2', { class: 'ride-title' }, r.name || t('rides.untitled'),
+    el('h2', { class: 'ride-title' }, rideTitle(r),
       el('span', { class: 'muted' }, ' · ', fmt.dateTime(r.started_at))),
     el('div', { class: 'stat-grid' },
       stat(t('stats.distance'), fmt.distance(r.distance_m), 'primary'),
