@@ -13,19 +13,13 @@ Versions follow SemVer `0.y.z`: each milestone below bumps `y`.
   validated against METAR rain reports), background enrichment, AGPL-3.0.
 - Deployment: `deploy/deploy.sh` → idempotent `install.sh`, `stezhka-admin`, login brute-force
   protection, live at `stezhka.arseniusgen.dev` behind `server_https.py`.
+- **v0.4** Managing rides: bikes (settings dialog, per-ride bike, list filter), edit name/notes,
+  delete with tombstone (the inbox never re-imports a deleted ride; an explicit upload restores it),
+  change password in the UI, compare overlay of a second ride (nearest in time listed first).
 
-## Next: v0.4 - managing rides
+Still open from v0.4: **source link (AGPL §13)** - footer link to the public repository, once it exists.
 
-| Item | Done when |
-|---|---|
-| Bikes in the UI | bikes can be added in the web UI; each ride shows and can change its bike; ride list can be filtered by bike |
-| Edit a ride | name and notes editable in the ride view |
-| Delete a ride | ride and its derived data removed; its file hash remembered so the inbox never re-imports it |
-| Change password in the UI | current + new password (12+), all other sessions logged out |
-| Compare two rides | a second ride can be overlaid on the map (e.g. Poco vs iPhone of the same trip) |
-| Source link (AGPL §13) | footer link to the public repository, once it exists |
-
-## v0.5 - roads and segments
+## Next: v0.5 - roads and segments
 
 - OSM extract for the region (Geofabrik Ukraine → `osmium extract` by bbox) → own road graph with
   stable segment ids, **including** paths/tracks/footways unless `bicycle=no`; keep `surface`,

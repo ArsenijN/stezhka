@@ -21,8 +21,9 @@ MAX_FILE_BYTES = 50 * 1024 * 1024
 
 @dataclass(frozen=True, slots=True)
 class ImportResult:
-    ride_id: int
+    ride_id: int  # 0 when skipped
     created: bool
+    skipped_deleted: bool = False  # the file belongs to a ride the user deleted
 
 
 def _store_raw(raw_dir: Path, sha: str, data: bytes) -> str:
@@ -81,11 +82,21 @@ def _write_derived(conn: sqlite3.Connection, ride_id: int, pr: ProcessedRide) ->
     )
 
 
-def import_bytes(conn: sqlite3.Connection, raw_dir: Path, data: bytes, source_name: str | None) -> ImportResult:
-    """Import one GPX file. Idempotent: the same bytes always map to the same ride."""
+def import_bytes(
+    conn: sqlite3.Connection, raw_dir: Path, data: bytes, source_name: str | None, *, allow_deleted: bool = False
+) -> ImportResult:
+    """Import one GPX file. Idempotent: the same bytes always map to the same ride.
+
+    Files of deleted rides are skipped unless allow_deleted (an explicit upload/import by the user,
+    as opposed to the inbox re-scanning a folder), which also forgets the deletion.
+    """
     if len(data) > MAX_FILE_BYTES:
         raise GpxError("file too large")
     sha = hashlib.sha256(data).hexdigest()
+    if conn.execute("SELECT 1 FROM deleted_rides WHERE sha256 = ?", (sha,)).fetchone():
+        if not allow_deleted:
+            return ImportResult(0, created=False, skipped_deleted=True)
+        conn.execute("DELETE FROM deleted_rides WHERE sha256 = ?", (sha,))
     row = conn.execute("SELECT id FROM rides WHERE sha256 = ?", (sha,)).fetchone()
     if row:
         return ImportResult(row["id"], created=False)
@@ -103,6 +114,21 @@ def import_bytes(conn: sqlite3.Connection, raw_dir: Path, data: bytes, source_na
         _write_derived(conn, ride_id, pr)
     log.info("imported ride %s from %s (%d points)", ride_id, source_name, pr.summary.point_count)
     return ImportResult(ride_id, created=True)
+
+
+def delete_ride(conn: sqlite3.Connection, raw_dir: Path, ride_id: int) -> bool:
+    """Delete a ride, its derived data and its raw file; remember the hash (see import_bytes)."""
+    row = conn.execute("SELECT sha256, raw_path FROM rides WHERE id = ?", (ride_id,)).fetchone()
+    if not row:
+        return False
+    with tx(conn):
+        conn.execute(
+            "INSERT OR REPLACE INTO deleted_rides(sha256, deleted_at) VALUES (?, ?)", (row["sha256"], time.time())
+        )
+        conn.execute("DELETE FROM rides WHERE id = ?", (ride_id,))  # points, stops, weather cascade
+    (raw_dir / row["raw_path"]).unlink(missing_ok=True)
+    log.info("deleted ride %s", ride_id)
+    return True
 
 
 def reprocess(conn: sqlite3.Connection, raw_dir: Path, *, all_rides: bool = False) -> tuple[int, list[int]]:

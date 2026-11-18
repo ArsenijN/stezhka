@@ -135,6 +135,13 @@ MIGRATIONS: list[str] = [
         source           TEXT NOT NULL
     );
     """,
+    # 3: deleted rides are remembered by file hash so the inbox never re-imports them
+    """
+    CREATE TABLE deleted_rides (
+        sha256     TEXT PRIMARY KEY,
+        deleted_at REAL NOT NULL
+    ) WITHOUT ROWID;
+    """,
 ]
 
 

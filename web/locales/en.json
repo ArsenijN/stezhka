@@ -7,10 +7,29 @@
   },
   "actions": {
     "upload": "Upload GPX",
-    "logout": "Log out"
+    "logout": "Log out",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "cancel": "Cancel",
+    "settings": "Settings",
+    "close": "Close"
   },
   "settings": {
-    "language": "Language"
+    "language": "Language",
+    "title": "Settings",
+    "bikes": "Bikes",
+    "no_bikes": "No bikes yet.",
+    "bike_name": "Bike name",
+    "bike_kind": "Type",
+    "add_bike": "Add",
+    "password": "Password",
+    "current_password": "Current password",
+    "new_password": "New password (12+ characters)",
+    "repeat_password": "Repeat the new password",
+    "change_password": "Change password",
+    "password_mismatch": "The new passwords differ.",
+    "password_changed": "Password changed. Other devices are signed out."
   },
   "rides": {
     "title": "Rides",
@@ -18,7 +37,12 @@
     "count_other": "{{count}} rides",
     "empty": "No rides yet. Upload a GPX file, or let the server watch your OpenTracks export folder.",
     "untitled": "Ride",
-    "select": "Pick a ride on the left."
+    "select": "Pick a ride on the left.",
+    "filter_all": "All bikes",
+    "filter_none": "No bike set",
+    "filter_label": "Filter by bike",
+    "delete_confirm": "Delete this ride? Its GPX file is removed from the server, and the inbox will not import it again. Uploading the file yourself brings it back.",
+    "deleted": "Ride deleted."
   },
   "stats": {
     "distance": "Distance",
@@ -68,7 +92,8 @@
     "bike_exists": "A bike with this name already exists.",
     "network": "The server is unreachable.",
     "unknown": "Something went wrong.",
-    "too_many_attempts": "Too many failed sign-in attempts. Try again in 15 minutes."
+    "too_many_attempts": "Too many failed sign-in attempts. Try again in 15 minutes.",
+    "password_too_short": "The new password must be at least 12 characters."
   },
   "weather": {
     "wind": "{{speed}} from {{dir}}",
@@ -94,5 +119,24 @@
       "wet": "wet",
       "soaked": "soaked"
     }
+  },
+  "edit": {
+    "name": "Name",
+    "bike": "Bike",
+    "no_bike": "No bike",
+    "notes": "Notes"
+  },
+  "compare": {
+    "label": "Compare with",
+    "none": "nothing",
+    "summary": "{{distance}} · {{time}} · {{speed}}"
+  },
+  "bike_kind": {
+    "mtb": "Mountain",
+    "trekking": "Trekking",
+    "gravel": "Gravel",
+    "road": "Road",
+    "city": "City",
+    "other": "Other"
   }
 }

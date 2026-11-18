@@ -114,3 +114,36 @@ def test_login_throttle_window_and_reset():
 def test_short_passwords_rejected(cfg):
     with pytest.raises(ValueError):
         auth.set_password(connect(cfg.db_path), "short-pass")
+
+
+def test_delete_ride_tombstones_inbox_but_not_explicit_upload(client, cfg):
+    from stezhka.ingest import import_bytes
+
+    login(client, cfg)
+    data = commute().gpx()
+    rid = client.post("/api/rides", content=data).json()["id"]
+    raw_files = list(cfg.raw_dir.rglob("*.gpx"))
+    assert len(raw_files) == 1
+    assert client.delete(f"/api/rides/{rid}").json() == {"ok": True}
+    assert client.get(f"/api/rides/{rid}").status_code == 404
+    assert not raw_files[0].exists()  # the raw file is gone too
+    assert client.delete(f"/api/rides/{rid}").json() == {"error": "not_found"}
+
+    conn = connect(cfg.db_path)
+    res = import_bytes(conn, cfg.raw_dir, data, "inbox.gpx")  # what the inbox watcher does
+    assert res.skipped_deleted and not res.created
+    assert conn.execute("SELECT COUNT(*) FROM points").fetchone()[0] == 0
+
+    r = client.post("/api/rides", content=data)  # an explicit upload brings it back
+    assert r.status_code == 201 and r.json()["created"] is True
+
+
+def test_change_password(client, cfg):
+    login(client, cfg)
+    assert client.post("/api/password", json={"current": "wrong one!!", "new": "x" * 12}).json() == {"error": "bad_credentials"}
+    assert client.post("/api/password", json={"current": "correct horse", "new": "short"}).json() == {"error": "password_too_short"}
+    assert client.post("/api/password", json={"current": "correct horse", "new": "battery staple 42"}).json() == {"ok": True}
+    assert client.get("/api/rides").status_code == 200  # this browser stays signed in
+    client.post("/api/logout")
+    assert client.post("/api/login", json={"password": "correct horse"}).status_code == 401
+    assert client.post("/api/login", json={"password": "battery staple 42"}).status_code == 200

@@ -28,7 +28,7 @@ from .db import connect
 from .gpx import GpxError
 from .dem import ATTRIBUTION as DEM_ATTRIBUTION
 from .enrich import EnrichWorker
-from .ingest import MAX_FILE_BYTES, InboxWatcher, import_bytes
+from .ingest import MAX_FILE_BYTES, InboxWatcher, delete_ride, import_bytes
 from .weather import ATTRIBUTION as WEATHER_ATTRIBUTION
 
 log = logging.getLogger(__name__)
@@ -44,6 +44,7 @@ class ErrorCode(StrEnum):
     BAD_REQUEST = "bad_request"
     BIKE_EXISTS = "bike_exists"
     TOO_MANY_ATTEMPTS = "too_many_attempts"
+    PASSWORD_TOO_SHORT = "password_too_short"
 
 
 class ApiError(Exception):
@@ -54,6 +55,11 @@ class ApiError(Exception):
 
 class LoginBody(BaseModel):
     password: str = Field(max_length=1024)
+
+
+class PasswordChange(BaseModel):
+    current: str = Field(max_length=1024)
+    new: str = Field(max_length=1024)
 
 
 class RidePatch(BaseModel):
@@ -232,7 +238,10 @@ def create_app(cfg: Config) -> FastAPI:
                 time.sleep(1.0)  # runs in a worker thread
                 raise ApiError(401, ErrorCode.BAD_CREDENTIALS)
             throttle.succeeded(ip)
-        token = auth.create_session(conn, request.headers.get("user-agent"))
+        set_session_cookie(response, auth.create_session(conn, request.headers.get("user-agent")))
+        return {"ok": True}
+
+    def set_session_cookie(response: Response, token: str) -> None:
         response.set_cookie(
             auth.SESSION_COOKIE,
             token,
@@ -242,6 +251,23 @@ def create_app(cfg: Config) -> FastAPI:
             samesite="strict",
             path="/",
         )
+
+    @app.post("/api/password")
+    def change_password(body: PasswordChange, request: Request, response: Response, conn=Depends(require_auth)):
+        ip = request.client.host if request.client else "unknown"
+        with throttle.lock:  # the current password is a credential check like login
+            if throttle.blocked(ip):
+                raise ApiError(429, ErrorCode.TOO_MANY_ATTEMPTS)
+            if not auth.check_password(conn, body.current):
+                throttle.failed(ip)
+                time.sleep(1.0)
+                raise ApiError(401, ErrorCode.BAD_CREDENTIALS)
+            throttle.succeeded(ip)
+        try:
+            auth.set_password(conn, body.new)  # also ends every session, including this one
+        except ValueError:
+            raise ApiError(400, ErrorCode.PASSWORD_TOO_SHORT) from None
+        set_session_cookie(response, auth.create_session(conn, request.headers.get("user-agent")))
         return {"ok": True}
 
     @app.post("/api/logout")
@@ -335,7 +361,9 @@ def create_app(cfg: Config) -> FastAPI:
         name = request.headers.get("x-filename")  # URL-encoded by the client (non-ASCII names)
         name = unquote(name) if name else None
         try:
-            res = await run_in_threadpool(import_bytes, conn, cfg.raw_dir, bytes(data), name[:255] if name else None)
+            res = await run_in_threadpool(
+                import_bytes, conn, cfg.raw_dir, bytes(data), name[:255] if name else None, allow_deleted=True
+            )
         except GpxError:
             raise ApiError(400, ErrorCode.INVALID_GPX) from None
         if res.created:
@@ -343,6 +371,12 @@ def create_app(cfg: Config) -> FastAPI:
         else:
             response.status_code = 200
         return {"id": res.ride_id, "created": res.created}
+
+    @app.delete("/api/rides/{ride_id}")
+    def remove_ride(ride_id: int, conn: sqlite3.Connection = Depends(require_auth)):
+        if not delete_ride(conn, cfg.raw_dir, ride_id):
+            raise ApiError(404, ErrorCode.NOT_FOUND)
+        return {"ok": True}
 
     @app.patch("/api/rides/{ride_id}")
     def patch_ride(ride_id: int, body: RidePatch, conn: sqlite3.Connection = Depends(require_auth)):

@@ -33,6 +33,7 @@
         <span data-i18n="actions.upload"></span>
       </label>
       <select id="lang" class="btn" data-i18n-attr="aria-label:settings.language"></select>
+      <button id="settings-open" class="btn" type="button" data-i18n="actions.settings"></button>
       <button id="logout" class="btn ghost" type="button" data-i18n="actions.logout"></button>
     </header>
 
@@ -41,6 +42,7 @@
         <h2 data-i18n="rides.title"></h2>
         <span id="ride-count" class="muted"></span>
       </div>
+      <select id="bike-filter" class="btn filter" data-i18n-attr="aria-label:rides.filter_label" hidden></select>
       <ul id="ride-list" class="ride-list"></ul>
       <p id="no-rides" class="note" data-i18n="rides.empty" hidden></p>
     </aside>
@@ -57,6 +59,32 @@
       </div>
     </main>
   </div>
+
+  <dialog id="settings" class="settings">
+    <div class="settings-head">
+      <h2 data-i18n="settings.title"></h2>
+      <button id="settings-close" class="btn ghost" type="button" data-i18n="actions.close"></button>
+    </div>
+    <section>
+      <h3 data-i18n="settings.bikes"></h3>
+      <ul id="bike-list" class="bike-list"></ul>
+      <form id="bike-form" class="inline-form">
+        <input id="bike-name" required maxlength="100" data-i18n-attr="placeholder:settings.bike_name,aria-label:settings.bike_name">
+        <select id="bike-kind" data-i18n-attr="aria-label:settings.bike_kind"></select>
+        <button type="submit" class="btn primary small" data-i18n="settings.add_bike"></button>
+      </form>
+    </section>
+    <section>
+      <h3 data-i18n="settings.password"></h3>
+      <form id="password-form" class="stack-form">
+        <input id="pw-current" type="password" autocomplete="current-password" required data-i18n-attr="placeholder:settings.current_password,aria-label:settings.current_password">
+        <input id="pw-new" type="password" autocomplete="new-password" required minlength="12" data-i18n-attr="placeholder:settings.new_password,aria-label:settings.new_password">
+        <input id="pw-repeat" type="password" autocomplete="new-password" required minlength="12" data-i18n-attr="placeholder:settings.repeat_password,aria-label:settings.repeat_password">
+        <button type="submit" class="btn primary small" data-i18n="settings.change_password"></button>
+        <p id="pw-msg" class="error" role="alert"></p>
+      </form>
+    </section>
+  </dialog>
 
   <div id="toast" class="toast" role="status" hidden></div>
 </body>

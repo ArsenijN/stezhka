@@ -105,6 +105,9 @@ def test_dynamic_namespaces_are_complete():
         assert f"weather.dir.{d}" in en
     for w in ("dry", "damp", "wet", "soaked"):  # weather.wetness_class()
         assert f"weather.wetness.{w}" in en
+    kinds = re.search(r"BIKE_KINDS = \[([^\]]*)\]", (WEB / "js" / "settings.js").read_text(encoding="utf-8"))
+    for k in re.findall(r"'([^']+)'", kinds.group(1)):
+        assert f"bike_kind.{k}" in en
 
 
 @pytest.mark.parametrize("code", [c for c in locale_codes() if c != "en"])

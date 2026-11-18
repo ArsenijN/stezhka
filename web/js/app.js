@@ -1,47 +1,25 @@
 // App shell: login, ride list, ride view. All user data is inserted with textContent, never HTML
 // (ride names come from GPX files).
 import { api, ApiError, columns } from './api.js';
-import { initI18n, setLocale, locale, locales, onLocaleChange, t, has } from './i18n.js';
+import { initI18n, setLocale, locale, locales, onLocaleChange, t } from './i18n.js';
 import * as fmt from './format.js';
 import { RideMap, SPEED_STOPS } from './map.js';
 import { ProfileChart } from './chart.js';
-
-const $ = (id) => document.getElementById(id);
+import { initSettings } from './settings.js';
+import { $, el, errorText, toast } from './ui.js';
 
 const state = {
   rides: [],
+  bikes: [],
+  bikeFilter: 'all', // 'all' | 'none' | bike id as string
   ride: null, // detail of the selected ride
   points: null,
+  editing: false,
+  compareId: null,
   map: null,
   chart: null,
   config: null,
 };
-
-function el(tag, attrs = {}, ...children) {
-  const n = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') n.className = v;
-    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
-    else n.setAttribute(k, v);
-  }
-  for (const c of children) if (c != null) n.append(c);
-  return n;
-}
-
-function errorText(err) {
-  const code = err instanceof ApiError ? err.code : 'unknown';
-  return has(`errors.${code}`) ? t(`errors.${code}`) : t('errors.unknown');
-}
-
-let toastTimer;
-function toast(message, kind = 'info') {
-  const box = $('toast');
-  box.textContent = message;
-  box.dataset.kind = kind;
-  box.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { box.hidden = true; }, 5000);
-}
 
 // --- login --------------------------------------------------------------------------------------
 
@@ -84,23 +62,42 @@ function rideTitle(r) {
 
 // --- ride list ----------------------------------------------------------------------------------
 
+function visibleRides() {
+  const f = state.bikeFilter;
+  if (f === 'all') return state.rides;
+  if (f === 'none') return state.rides.filter((r) => r.bike_id == null);
+  return state.rides.filter((r) => String(r.bike_id) === f);
+}
+
+function renderBikeFilter() {
+  const sel = $('bike-filter');
+  sel.replaceChildren(
+    el('option', { value: 'all' }, t('rides.filter_all')),
+    ...state.bikes.map((b) => el('option', { value: String(b.id) }, b.name)),
+    el('option', { value: 'none' }, t('rides.filter_none')),
+  );
+  if (![...sel.options].some((o) => o.value === state.bikeFilter)) state.bikeFilter = 'all';
+  sel.value = state.bikeFilter;
+  sel.hidden = state.bikes.length === 0;
+}
+
 function renderRideList() {
   const list = $('ride-list');
   list.replaceChildren();
-  $('ride-count').textContent = t('rides.count', { count: state.rides.length });
+  const rides = visibleRides();
+  $('ride-count').textContent = t('rides.count', { count: rides.length });
   $('no-rides').hidden = state.rides.length > 0;
-  for (const r of state.rides) {
+  for (const r of rides) {
     const selected = state.ride?.id === r.id;
     const meta = [fmt.distance(r.distance_m), fmt.duration(r.moving_s), fmt.speed(r.avg_moving_mps)].join(' · ');
-    const item = el('li', {},
+    list.append(el('li', {},
       el('a', { href: `#ride=${r.id}`, class: 'ride-item', 'aria-current': selected ? 'true' : 'false' },
         el('span', { class: 'ride-date' }, fmt.weekdayDate(r.started_at), ' ', fmt.time(r.started_at)),
         el('span', { class: 'ride-name' }, rideTitle(r)),
         el('span', { class: 'ride-meta' }, meta),
         r.bike_name ? el('span', { class: 'ride-bike' }, r.bike_name) : null,
         r.creator ? el('span', { class: 'ride-source' }, r.creator) : null, // recording app name, as in the file
-      ));
-    list.append(item);
+      )));
   }
 }
 
@@ -109,12 +106,105 @@ async function loadRides() {
   renderRideList();
 }
 
+async function loadBikes() {
+  state.bikes = (await api('bikes')).bikes;
+  renderBikeFilter();
+}
+
 // --- ride view ----------------------------------------------------------------------------------
 
 function stat(label, value, extraClass = '') {
   return el('div', { class: `stat ${extraClass}` },
     el('span', { class: 'stat-label' }, label),
     el('span', { class: 'stat-value' }, value));
+}
+
+function titleRow(r) {
+  return el('div', { class: 'ride-head' },
+    el('h2', { class: 'ride-title' }, rideTitle(r),
+      el('span', { class: 'muted' }, ' · ', fmt.dateTime(r.started_at)),
+      r.bike_name ? el('span', { class: 'ride-bike' }, ' · ', r.bike_name) : null),
+    el('span', { class: 'spacer' }),
+    el('button', { type: 'button', class: 'btn small', onclick: () => { state.editing = true; renderStats(); } }, t('actions.edit')),
+    el('button', { type: 'button', class: 'btn small danger', onclick: onDelete }, t('actions.delete')),
+  );
+}
+
+function editForm(r) {
+  const bikeSel = el('select', { id: 'edit-bike' },
+    el('option', { value: '' }, t('edit.no_bike')),
+    ...state.bikes.map((b) => el('option', { value: String(b.id) }, b.name)));
+  bikeSel.value = r.bike_id == null ? '' : String(r.bike_id);
+  return el('form', { class: 'edit-form', onsubmit: onSaveEdit },
+    el('label', {}, el('span', {}, t('edit.name')),
+      el('input', { id: 'edit-name', maxlength: '200', value: r.name && !TIMESTAMP_NAME.test(r.name) ? r.name : '', placeholder: t('rides.untitled') })),
+    el('label', {}, el('span', {}, t('edit.bike')), bikeSel),
+    el('label', { class: 'wide' }, el('span', {}, t('edit.notes')),
+      el('textarea', { id: 'edit-notes', rows: '2', maxlength: '10000', value: r.notes || '' })),
+    el('div', { class: 'edit-actions' },
+      el('button', { type: 'submit', class: 'btn primary small' }, t('actions.save')),
+      el('button', { type: 'button', class: 'btn small', onclick: () => { state.editing = false; renderStats(); } }, t('actions.cancel'))),
+  );
+}
+
+async function onSaveEdit(e) {
+  e.preventDefault();
+  const bike = $('edit-bike').value;
+  try {
+    const updated = await api(`rides/${state.ride.id}`, {
+      method: 'PATCH',
+      json: { name: $('edit-name').value.trim() || null, notes: $('edit-notes').value.trim() || null, bike_id: bike ? Number(bike) : null },
+    });
+    state.ride = { ...state.ride, ...updated };
+    state.editing = false;
+    await loadRides();
+    renderStats();
+  } catch (ex) {
+    toast(errorText(ex), 'error');
+  }
+}
+
+async function onDelete() {
+  if (!confirm(t('rides.delete_confirm'))) return;
+  try {
+    await api(`rides/${state.ride.id}`, { method: 'DELETE' });
+  } catch (ex) {
+    toast(errorText(ex), 'error');
+    return;
+  }
+  toast(t('rides.deleted'));
+  state.ride = null;
+  state.compareId = null;
+  await loadRides();
+  location.hash = visibleRides()[0] ? `ride=${visibleRides()[0].id}` : '';
+}
+
+function compareRow(r) {
+  // Other rides, the ones closest in time first (a second phone on the same trip sorts to the top).
+  const others = state.rides.filter((o) => o.id !== r.id)
+    .sort((a, b) => Math.abs(a.started_at - r.started_at) - Math.abs(b.started_at - r.started_at));
+  const sel = el('select', { id: 'compare', onchange: (e) => setCompare(e.target.value ? Number(e.target.value) : null) },
+    el('option', { value: '' }, t('compare.none')),
+    ...others.map((o) => el('option', { value: String(o.id) },
+      `${fmt.weekdayDate(o.started_at)} ${fmt.time(o.started_at)} · ${fmt.distance(o.distance_m)}${o.creator ? ` · ${o.creator}` : ''}`)));
+  sel.value = state.compareId ? String(state.compareId) : '';
+  const other = state.rides.find((o) => o.id === state.compareId);
+  return el('div', { class: 'compare-row' },
+    el('label', {}, el('span', { class: 'compare-swatch', 'aria-hidden': 'true' }), t('compare.label'), ' ', sel),
+    other ? el('span', { class: 'muted' }, t('compare.summary', {
+      distance: fmt.distance(other.distance_m), time: fmt.duration(other.moving_s), speed: fmt.speed(other.avg_moving_mps),
+    })) : null);
+}
+
+async function setCompare(id) {
+  state.compareId = id;
+  renderStats();
+  if (!id) return state.map.showCompare(null);
+  try {
+    state.map.showCompare(columns(await api(`rides/${id}/points`)));
+  } catch (ex) {
+    toast(errorText(ex), 'error');
+  }
 }
 
 function renderStats() {
@@ -128,8 +218,8 @@ function renderStats() {
   const stops = r.stops.filter((s) => s.kind === 'stop');
   const stopTime = stops.reduce((a, s) => a + (s.end_t - s.start_t), 0);
   box.append(
-    el('h2', { class: 'ride-title' }, rideTitle(r),
-      el('span', { class: 'muted' }, ' · ', fmt.dateTime(r.started_at))),
+    state.editing ? editForm(r) : titleRow(r),
+    !state.editing && r.notes ? el('p', { class: 'ride-notes' }, r.notes) : null,
     el('div', { class: 'stat-grid' },
       stat(t('stats.distance'), fmt.distance(r.distance_m), 'primary'),
       stat(t('stats.moving_time'), fmt.duration(r.moving_s), 'primary'),
@@ -140,6 +230,7 @@ function renderStats() {
       stat(t('stats.stops'), t('stats.stop_summary', { count: stops.length, time: fmt.duration(stopTime) })),
     ),
     weatherRow(r),
+    compareRow(r),
     el('p', { class: 'note' }, r.ele_source === 'dem' ? t('stats.elevation_source_dem') : t('stats.elevation_source_gps')),
   );
 }
@@ -184,8 +275,12 @@ function renderLegend() {
 }
 
 async function selectRide(id) {
+  state.editing = false;
+  if (state.compareId === id) state.compareId = null;
   if (!id) {
     state.ride = null;
+    state.compareId = null;
+    state.map.showCompare(null);
     renderRideList();
     renderStats();
     return;
@@ -203,6 +298,7 @@ async function selectRide(id) {
   renderStats();
   state.chart.setData(state.points);
   await state.map.showRide(state.points, state.ride.stops);
+  if (state.compareId) await setCompare(state.compareId);
 }
 
 function rideIdFromHash() {
@@ -255,8 +351,10 @@ async function startApp() {
     state.map.onHover((i) => state.chart.setCursor(i));
     renderLegend();
     window.addEventListener('hashchange', () => selectRide(rideIdFromHash()));
+    $('bike-filter').addEventListener('change', (e) => { state.bikeFilter = e.target.value; renderRideList(); });
+    initSettings((bikes) => { state.bikes = bikes; renderBikeFilter(); renderRideList(); renderStats(); });
   }
-  await loadRides();
+  await Promise.all([loadRides(), loadBikes()]);
   const id = rideIdFromHash() ?? state.rides[0]?.id ?? null;
   if (id && rideIdFromHash() == null) history.replaceState(null, '', `#ride=${id}`);
   await selectRide(id);
@@ -268,6 +366,7 @@ async function boot() {
   onLocaleChange(() => {
     $('lang').value = locale();
     if (!appStarted) return;
+    renderBikeFilter();
     renderRideList();
     renderStats();
     renderLegend();

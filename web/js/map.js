@@ -20,6 +20,7 @@ export const SPEED_STOPS = [
   [40, '#5b3fa8'],
 ];
 
+export const COMPARE_COLOR = '#7c3aed';
 const STOP_COLORS = { stop: '#d7301f', break: '#6b7280', pause: '#1f2937' };
 const UZHHOROD = [22.2879, 48.6208];
 const EMPTY = { type: 'FeatureCollection', features: [] };
@@ -54,6 +55,7 @@ export class RideMap {
     this.track = EMPTY;
     this.stops = EMPTY;
     this.cursor = EMPTY;
+    this.compare = EMPTY;
     this.points = null;
     this.hoverHandlers = new Set();
     this.map = new maplibregl.Map({
@@ -102,6 +104,13 @@ export class RideMap {
     m.addSource('track', { type: 'geojson', data: this.track });
     m.addSource('stops', { type: 'geojson', data: this.stops });
     m.addSource('cursor', { type: 'geojson', data: this.cursor });
+    m.addSource('compare', { type: 'geojson', data: this.compare });
+    // Second ride for comparison, drawn under the main track.
+    m.addLayer({
+      id: 'compare', type: 'line', source: 'compare',
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': COMPARE_COLOR, 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 2.5, 16, 5], 'line-dasharray': [1.5, 1.5], 'line-opacity': 0.9 },
+    });
     m.addLayer({
       id: 'track-casing', type: 'line', source: 'track',
       layout: { 'line-join': 'round', 'line-cap': 'round' },
@@ -198,6 +207,22 @@ export class RideMap {
       for (let i = 0; i < pts.length; i++) b.extend([pts.lon[i], pts.lat[i]]);
       this.map.fitBounds(b, { padding: 40, duration: 0, maxZoom: 16 });
     }
+  }
+
+  /** Overlay another ride's track (columnar points), or remove it with null. */
+  showCompare(pts) {
+    if (!pts) return this._setData('compare', EMPTY);
+    const lines = [];
+    let cur = [];
+    for (let i = 0; i < pts.length; i++) {
+      if (i > 0 && pts.segment[i] !== pts.segment[i - 1]) { if (cur.length > 1) lines.push(cur); cur = []; }
+      cur.push([pts.lon[i], pts.lat[i]]);
+    }
+    if (cur.length > 1) lines.push(cur);
+    this._setData('compare', {
+      type: 'FeatureCollection',
+      features: [{ type: 'Feature', properties: {}, geometry: { type: 'MultiLineString', coordinates: lines } }],
+    });
   }
 
   setCursor(i) {

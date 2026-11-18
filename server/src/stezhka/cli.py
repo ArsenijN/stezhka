@@ -30,7 +30,7 @@ def _cmd_import(cfg: Config, args) -> int:
     for f in args.files:
         p = Path(f)
         try:
-            res = import_bytes(conn, cfg.raw_dir, p.read_bytes(), p.name)
+            res = import_bytes(conn, cfg.raw_dir, p.read_bytes(), p.name, allow_deleted=True)
         except (GpxError, OSError) as e:
             print(f"FAIL {p}: {e}", file=sys.stderr)
             failed += 1
