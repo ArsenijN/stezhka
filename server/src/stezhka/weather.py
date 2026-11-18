@@ -4,8 +4,11 @@ Privacy: requests carry only a coarse cell (lat/lon rounded to 0.1°, ~10 km) an
 never the track. Hourly data is cached per cell in `weather_hourly`, so rides on the same day in
 the same town cost one request.
 
-Source choice: the archive API (reanalysis) is complete from ~5 days back; for newer rides the
-forecast API serves the recent past from its model analysis. Responses with gaps are rejected.
+Source: the Historical Forecast API (high-resolution weather models, the same data the forecast
+API serves for the recent past, kept from 2022 on; available immediately). The ERA5 archive is used
+only for older dates. Scored against METAR rain reports at Nyiregyhaza (LHNY, Oct-Nov 2026) the two
+detect rain equally well (CSI 0.55 vs 0.53), so there is nothing to gain from later swapping one
+for the other. Responses with gaps are rejected.
 
 Road wetness is a heuristic, not a measurement:
   effective_mm = Σ precip_h · w(age_h),  w = 1 for rain during the ride or up to 3 h before it,
@@ -23,15 +26,15 @@ import time
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 log = logging.getLogger(__name__)
 
 WEATHER_VERSION = 1
 CELL_DEG = 0.1
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
-FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
-ARCHIVE_MIN_AGE_S = 5 * 86400
+HISTORICAL_FORECAST_URL = "https://historical-forecast-api.open-meteo.com/v1/forecast"
+HISTORICAL_FORECAST_FROM = datetime(2022, 1, 1, tzinfo=timezone.utc).timestamp()
 USER_AGENT = "stezhka-weather/1"
 ATTRIBUTION = "Weather: Open-Meteo.com (CC BY 4.0)"
 
@@ -62,11 +65,12 @@ def _hour_floor(ts: float) -> int:
     return int(ts // 3600 * 3600)
 
 
-def fetch_hours(lat: float, lon: float, start_ts: float, end_ts: float, *, now: float | None = None) -> tuple[list[dict], str]:
+def fetch_hours(lat: float, lon: float, start_ts: float, end_ts: float) -> tuple[list[dict], str]:
     """Hourly rows covering [start_ts, end_ts] for one cell. Raises on incomplete data."""
-    now = now or time.time()
-    use_archive = now - end_ts >= ARCHIVE_MIN_AGE_S
-    base, source = (ARCHIVE_URL, "archive") if use_archive else (FORECAST_URL, "forecast")
+    if start_ts >= HISTORICAL_FORECAST_FROM:
+        base, source = HISTORICAL_FORECAST_URL, "historical_forecast"
+    else:
+        base, source = ARCHIVE_URL, "archive"
     params = {
         "latitude": f"{lat:.2f}",
         "longitude": f"{lon:.2f}",
@@ -240,8 +244,3 @@ def ride_weather(conn: sqlite3.Connection, lat: float, lon: float, points: list)
         (clat, clon, _hour_floor(lo), hi),
     ).fetchall()
     return summarize(hours, points, source)
-
-
-def recent_cutoff(now: float | None = None) -> float:
-    """Rides that ended after this were fetched from the forecast API and should be refreshed."""
-    return (now or time.time()) - ARCHIVE_MIN_AGE_S - timedelta(days=1).total_seconds()

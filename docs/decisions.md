@@ -84,9 +84,13 @@ prefixes, and translation variables that English does not have.
 
 ## D9. Weather: Open-Meteo, coarse cell, cached
 Requests carry only a ~10 km cell (lat/lon rounded to 0.1°) and whole UTC days, never the track;
-hourly data is cached per cell (`weather_hourly`), so a day of commutes costs one request. Rides
-that ended more than 5 days ago use the archive (reanalysis); newer ones use the forecast API's recent
-past and are refreshed from the archive later. Responses with gaps are rejected and retried.
+hourly data is cached per cell (`weather_hourly`), so a day of commutes costs one request.
+Source: Open-Meteo's **Historical Forecast API** (high-resolution models, available immediately,
+kept from 2022 on); ERA5 reanalysis only for older dates. Evaluated against METAR rain reports at
+Nyiregyhaza (LHNY, ~80 km away, Oct 1 - Nov 13 2026, 87 rain hours): rain hours detected 74.7 % vs
+75.9 %, false alarms 32.3 % vs 35.9 %, CSI 0.55 vs 0.53 - equivalent, so the earlier plan to replace
+recent data with the archive after 5 days was dropped (it bought nothing). Uzhhorod's own airport
+station (UKLU) publishes no reports while the airspace is closed.
 Per ride (`ride_weather`): mean temperature/humidity, vector-mean wind, gusts, **headwind component
 along the track** (moving time-weighted; + = against the rider; note 10 m wind is stronger than at
 rider height), rain during and 12 h before, and a wetness heuristic

@@ -110,7 +110,7 @@ def test_weather_is_cached_per_cell(tmp_path, monkeypatch):
     conn = connect(tmp_path / "db.sqlite3")
     calls = []
 
-    def fake_fetch(lat, lon, start, end, now=None):
+    def fake_fetch(lat, lon, start, end):
         calls.append((lat, lon))
         return hours(start, int((end - start) // 3600) + 2), "archive"
 
@@ -126,8 +126,8 @@ def test_weather_is_cached_per_cell(tmp_path, monkeypatch):
 
 @pytest.fixture
 def offline_weather(monkeypatch):
-    def fake_fetch(lat, lon, start, end, now=None):
-        return hours(start, int((end - start) // 3600) + 2, precipitation_mm=0.3), "forecast"
+    def fake_fetch(lat, lon, start, end):
+        return hours(start, int((end - start) // 3600) + 2, precipitation_mm=0.3), "historical_forecast"
 
     monkeypatch.setattr(weather, "fetch_hours", fake_fetch)
 
@@ -147,11 +147,8 @@ def test_enrich_ride_end_to_end(tmp_path, offline_weather):
     assert r["ele_source"] == "dem"
     assert r["ascent_m"] == pytest.approx(269.8, rel=0.03) and r["descent_m"] < 2
     w = conn.execute("SELECT * FROM ride_weather").fetchone()
-    assert w["source"] == "forecast" and w["headwind_mps"] == pytest.approx(4.0, abs=0.1)
-    # the synthetic ride is weeks old, so provisional forecast weather is queued for an archive refresh
-    assert enrich.pending_rides(conn) == [rid]
-    conn.execute("UPDATE ride_weather SET source = 'archive'")
-    assert enrich.pending_rides(conn) == []
+    assert w["source"] == "historical_forecast" and w["headwind_mps"] == pytest.approx(4.0, abs=0.1)
+    assert enrich.pending_rides(conn) == []  # nothing left to do
 
 
 def test_enrichment_failure_is_recorded_and_backed_off(tmp_path, monkeypatch):
@@ -183,3 +180,23 @@ def test_api_exposes_dem_profile_and_weather(tmp_path, offline_weather, monkeypa
         ele = [row[pts["fields"].index("ele")] for row in pts["rows"]]
         assert ele[-1] - ele[0] == pytest.approx(269.8, rel=0.03)
         assert not math.isnan(ele[0])
+
+
+def test_source_choice(monkeypatch):
+    urls = []
+
+    class Resp:
+        def __init__(self, url):
+            urls.append(url)
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def read(self):
+            return b'{"hourly": {"time": [], "precipitation": [], "temperature_2m": []}}'
+
+    monkeypatch.setattr(weather.urllib.request, "urlopen", lambda req, timeout: Resp(req.full_url))
+    for start in (weather.HISTORICAL_FORECAST_FROM + 86400, weather.HISTORICAL_FORECAST_FROM - 86400 * 400):
+        with pytest.raises(ValueError):  # empty response = incomplete
+            weather.fetch_hours(48.6, 22.3, start, start + 3600)
+    assert urls[0].startswith(weather.HISTORICAL_FORECAST_URL) and urls[1].startswith(weather.ARCHIVE_URL)

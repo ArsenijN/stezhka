@@ -2,8 +2,7 @@
 
 Separate from import on purpose: network trouble must never fail or delay an import. The server
 runs an EnrichWorker thread that picks up pending rides; the CLI enriches inline after `import`.
-Failed rides are retried after RETRY_S. Weather fetched from the forecast API is replaced by the
-archive (reanalysis) once that is available.
+Failed rides are retried after RETRY_S.
 """
 
 from __future__ import annotations
@@ -49,7 +48,7 @@ def enrich_elevation(conn: sqlite3.Connection, dem: Dem, ride_id: int) -> bool:
     return covered
 
 
-def enrich_weather(conn: sqlite3.Connection, ride_id: int, *, refresh: bool = False) -> str:
+def enrich_weather(conn: sqlite3.Connection, ride_id: int) -> str:
     pts = [
         dict(r)
         for r in conn.execute(
@@ -58,13 +57,6 @@ def enrich_weather(conn: sqlite3.Connection, ride_id: int, *, refresh: bool = Fa
     ]
     lat = sum(p["lat"] for p in pts) / len(pts)
     lon = sum(p["lon"] for p in pts) / len(pts)
-    if refresh:  # drop provisional forecast hours so they are re-fetched from the archive
-        lo, hi = weather.ride_window(pts[0]["t"], pts[-1]["t"])
-        clat, clon = weather.cell(lat, lon)
-        conn.execute(
-            "DELETE FROM weather_hourly WHERE cell_lat = ? AND cell_lon = ? AND t BETWEEN ? AND ? AND source = 'forecast'",
-            (clat, clon, lo - 3600, hi),
-        )
     w = weather.ride_weather(conn, lat, lon, pts)
     cols = [
         "temperature_c", "humidity_pct", "wind_speed_mps", "wind_dir_deg", "wind_gust_mps", "headwind_mps",
@@ -93,10 +85,9 @@ def enrich_ride(conn: sqlite3.Connection, dem: Dem, ride_id: int) -> list[str]:
             enrich_elevation(conn, dem, ride_id)
         except _ERRORS as e:
             errors.append(f"elevation: {e}")
-    stale_forecast = row["wsource"] == "forecast" and row["ended_at"] < weather.recent_cutoff()
-    if row["weather_version"] < weather.WEATHER_VERSION or stale_forecast:
+    if row["weather_version"] < weather.WEATHER_VERSION:
         try:
-            enrich_weather(conn, ride_id, refresh=stale_forecast)
+            enrich_weather(conn, ride_id)
         except _ERRORS as e:
             errors.append(f"weather: {e}")
     conn.execute(
@@ -113,14 +104,12 @@ def pending_rides(conn: sqlite3.Connection, limit: int = 20) -> list[int]:
     rows = conn.execute(
         """
         SELECT r.id FROM rides r LEFT JOIN ride_weather w ON w.ride_id = r.id
-        WHERE (r.dem_version < :dem OR r.weather_version < :wx
-               OR (w.source = 'forecast' AND r.ended_at < :cutoff))
+        WHERE (r.dem_version < :dem OR r.weather_version < :wx)
           AND (r.enrich_error IS NULL OR r.enrich_attempt_at < :retry)
         ORDER BY r.started_at DESC LIMIT :limit
         """,
         {
-            "dem": DEM_VERSION, "wx": weather.WEATHER_VERSION, "cutoff": weather.recent_cutoff(now),
-            "retry": now - RETRY_S, "limit": limit,
+            "dem": DEM_VERSION, "wx": weather.WEATHER_VERSION, "retry": now - RETRY_S, "limit": limit,
         },
     ).fetchall()
     return [r["id"] for r in rows]
