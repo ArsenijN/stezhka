@@ -391,6 +391,24 @@ def local_available(basemap_dir: Path) -> bool:
     )
 
 
+# OFM's styles are minimal "car maps": paths, footways, sidewalks and tracks (class=path) are drawn
+# almost exactly in the background colour. For a cyclist they are first-class (bridge sidewalks,
+# park and forest trails), so they get a visible dashed line. Only paint changes; layer order,
+# filters and data stay OFM's.
+PATH_LAYER_PAINT = {
+    "light": {"line-color": "#a29b8a", "line-opacity": 0.95, "line-dasharray": [2, 1.2]},
+    "dark": {"line-color": "#7d857f", "line-opacity": 0.95, "line-dasharray": [2, 1.2]},
+}
+PATH_LAYER_IDS = ("highway_path",)
+PATH_LAYER_WIDTH = ["interpolate", ["exponential", 1.2], ["zoom"], 13, 0.8, 16, 1.6, 20, 4]
+
+
+def _apply_overrides(style: dict, theme: str) -> None:
+    for layer in style["layers"]:
+        if layer.get("id") in PATH_LAYER_IDS and layer.get("type") == "line":
+            layer.setdefault("paint", {}).update(PATH_LAYER_PAINT[theme], **{"line-width": PATH_LAYER_WIDTH})
+
+
 def local_style(basemap_dir: Path, theme: str) -> dict:
     """OFM style rewritten to use the local extract, sprites and fonts.
 
@@ -406,6 +424,7 @@ def local_style(basemap_dir: Path, theme: str) -> dict:
         "attribution": ATTRIBUTION,
     }
     style["layers"] = [layer for layer in style["layers"] if layer.get("source") not in raster]
+    _apply_overrides(style, theme)
     style["glyphs"] = f"{BASE_TOKEN}basemap/fonts/{{fontstack}}/{{range}}.pbf"
     style["sprite"] = f"{BASE_TOKEN}basemap/sprites/ofm"
     return style

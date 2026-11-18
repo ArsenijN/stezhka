@@ -63,6 +63,9 @@ export class RideMap {
       style: blankStyle(theme()),
       center: UZHHOROD,
       zoom: 12,
+      // Style line widths are in screen pixels and stop growing at z20, while tiles hold detail only
+      // to z14: beyond ~19 roads look absurdly thin next to a GPS track (seen on a bridge).
+      maxZoom: 19,
       attributionControl: { compact: true, customAttribution: attributions },
     });
     this.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');

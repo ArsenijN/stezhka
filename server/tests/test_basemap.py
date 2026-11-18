@@ -114,6 +114,8 @@ def install_local_basemap(cfg):
         "layers": [
             {"id": "relief", "type": "raster", "source": "ne2_shaded"},
             {"id": "water", "type": "fill", "source": "openmaptiles", "source-layer": "water"},
+            {"id": "highway_path", "type": "line", "source": "openmaptiles", "source-layer": "transportation",
+             "paint": {"line-color": "rgb(234, 234, 234)"}},
         ],
     }
     for name in basemap.STYLES.values():
@@ -168,7 +170,9 @@ def test_local_basemap_style_and_range_requests(make_client):
 
     style = c.get(bm["styles"]["light"]).json()
     assert list(style["sources"]) == ["openmaptiles"]  # raster relief source dropped
-    assert [layer["id"] for layer in style["layers"]] == ["water"]
+    assert [layer["id"] for layer in style["layers"]] == ["water", "highway_path"]
+    path = style["layers"][1]["paint"]  # paths/sidewalks made visible (OFM draws them ~background colour)
+    assert path["line-color"] == basemap.PATH_LAYER_PAINT["light"]["line-color"] and "line-dasharray" in path
     assert style["sources"]["openmaptiles"]["url"] == f"pmtiles://{basemap.BASE_TOKEN}basemap/region.pmtiles"
     assert "TILEJSON_DOMAIN" not in json.dumps(style)
 

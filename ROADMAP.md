@@ -67,5 +67,7 @@ Versions follow SemVer `0.y.z`: each milestone below bumps `y`.
 - Phone in a jacket pocket: fixes ~4.5 s late and ~14 m off (measured 2026-11-18); stops can land
   ~20 m from where they happened. Map matching will absorb most of it.
 - Wetness ignores drying by sun/wind/temperature.
+- Basemap line widths are in screen pixels (not metres), so roads are not drawn at their real
+  width; zoom is capped at 19. Sidewalks/paths are drawn as dashed lines (OFM styles hide them).
 - Rides imported before v0.3.x on the server show weather source `forecast`; same data as
   `historical_forecast`, label only.
