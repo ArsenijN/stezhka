@@ -15,9 +15,8 @@ Versions follow SemVer `0.y.z`: each milestone below bumps `y`.
   protection, live at `stezhka.arseniusgen.dev` behind `server_https.py`.
 - **v0.4** Managing rides: bikes (settings dialog, per-ride bike, list filter), edit name/notes,
   delete with tombstone (the inbox never re-imports a deleted ride; an explicit upload restores it),
-  change password in the UI, compare overlay of a second ride (nearest in time listed first).
-
-Still open from v0.4: **source link (AGPL §13)** - footer link to the public repository, once it exists.
+  change password in the UI, compare overlay of a second ride (nearest in time listed first),
+  source-code link for every user (AGPL §13, `STEZHKA_SOURCE_URL`), CI running the tests on GitHub.
 
 ## Next: v0.5 - roads and segments
 

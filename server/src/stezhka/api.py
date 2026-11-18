@@ -225,6 +225,7 @@ def create_app(cfg: Config) -> FastAPI:
             "authenticated": auth.session_valid(conn, request.cookies.get(auth.SESSION_COOKIE)),
             "password_set": auth.has_password(conn),
             "version": __version__,
+            "source_url": cfg.source_url,  # AGPL-3.0 section 13: offered to every user
         }
 
     @app.post("/api/login")

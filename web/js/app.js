@@ -383,6 +383,10 @@ async function boot() {
     toast(errorText(ex), 'error');
     return;
   }
+  for (const a of document.querySelectorAll('.source-url')) {
+    a.href = session.source_url;
+    a.title = `${session.source_url} · Stezhka ${session.version} · AGPL-3.0`;
+  }
   if (session.authenticated) await startApp();
   else showLogin(session.password_set);
 }

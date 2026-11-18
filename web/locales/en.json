@@ -138,5 +138,8 @@
     "road": "Road",
     "city": "City",
     "other": "Other"
+  },
+  "app": {
+    "source_code": "Source code (AGPL-3.0)"
   }
 }

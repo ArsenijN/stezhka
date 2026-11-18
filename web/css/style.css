@@ -152,6 +152,9 @@ h1, h2 { margin: 0; }
 .compare-swatch { display: inline-block; width: 18px; height: 0; border-top: 3px dashed #7c3aed; vertical-align: middle; margin-right: 6px; }
 .filter { width: calc(100% - 12px); margin: 0 6px 8px; }
 
+.source-link { font-size: 11px; margin: 12px 6px 0; }
+.source-link a { color: var(--muted); }
+
 /* settings dialog */
 .settings { width: min(460px, calc(100% - 32px)); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 .settings::backdrop { background: rgba(0, 0, 0, 0.45); }

@@ -10,6 +10,8 @@ STEZHKA_BASEMAP_REMOTE if no local basemap extract exists, load map tiles from
                       tiles.openfreemap.org instead of a blank map: 1/0 (default: 0)
 STEZHKA_ENRICH        add DEM elevation (Copernicus, AWS Open Data) and weather (Open-Meteo,
                       coarse ~10 km cell only) to rides; needs internet: 1/0 (default: 1)
+STEZHKA_SOURCE_URL    where users of this server get its source code (AGPL-3.0 section 13);
+                      point it at your fork if you run modified code
 STEZHKA_WEB_DIR       static web UI folder                             (default: <repo>/web)
 """
 
@@ -20,6 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 _REPO_WEB = Path(__file__).resolve().parents[3] / "web"
+DEFAULT_SOURCE_URL = "https://github.com/ArsenijN/stezhka"
 
 
 def _bool(v: str | None, default: bool) -> bool:
@@ -39,6 +42,7 @@ class Config:
     cookie_secure: bool = True
     basemap_remote: bool = False
     enrich: bool = True
+    source_url: str = DEFAULT_SOURCE_URL
 
     @property
     def dem_dir(self) -> Path:
@@ -70,4 +74,5 @@ class Config:
             cookie_secure=_bool(e.get("STEZHKA_COOKIE_SECURE"), True),
             basemap_remote=_bool(e.get("STEZHKA_BASEMAP_REMOTE"), False),
             enrich=_bool(e.get("STEZHKA_ENRICH"), True),
+            source_url=e.get("STEZHKA_SOURCE_URL", DEFAULT_SOURCE_URL),
         )

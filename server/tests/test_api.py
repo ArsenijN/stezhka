@@ -155,3 +155,8 @@ def test_web_ui_files_are_revalidated(client):
     r = client.get("/js/map.js")
     assert r.status_code == 200 and r.headers["cache-control"] == "no-cache" and "etag" in r.headers
     assert client.get("/js/map.js", headers={"If-None-Match": r.headers["etag"]}).status_code == 304
+
+
+def test_source_link_offered_before_login(client):
+    # AGPL-3.0 section 13: every user of the service must be offered the source
+    assert client.get("/api/session").json()["source_url"].startswith("https://")
