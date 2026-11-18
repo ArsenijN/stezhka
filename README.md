@@ -74,10 +74,23 @@ After import, rides are enriched in the background (CLI: inline after `stezhka i
 
 ## Deployment
 
-See [deploy/stezhka.service](deploy/stezhka.service). Stezhka binds to `127.0.0.1:8470` and is
-meant to sit behind your HTTPS reverse proxy (subdomain or path prefix both work; the UI uses
-relative URLs). Back up with `stezhka backup <file>` plus a copy of `$STEZHKA_DATA_DIR/raw/`
-(the basemap can always be re-downloaded).
+```sh
+cp deploy/deploy.env.sample deploy/deploy.env   # once: SSH host, port, key (gitignored)
+./deploy/deploy.sh                              # tests -> rsync -> sudo install.sh on the server
+```
+
+`deploy/install.sh` is idempotent: it creates the `stezhka` system user, `/srv/stezhka/{app,venv,data}`,
+`/etc/stezhka.env` (once, from `deploy/stezhka.env.example`), the systemd unit and the
+`stezhka-admin` wrapper, then restarts the service and checks it answers. Afterwards, on the server:
+
+```sh
+sudo stezhka-admin set-password
+sudo stezhka-admin basemap        # ~230 MB map download, ~20 s
+```
+
+Stezhka binds to `127.0.0.1:8470` behind your HTTPS reverse proxy (subdomain or path prefix both
+work; the UI uses relative URLs). Back up with `sudo stezhka-admin backup <file>` plus a copy of
+`/srv/stezhka/data/raw/` (the basemap and DEM tiles can always be re-downloaded).
 
 The reverse proxy must:
 * forward the `Range` request header and pass `206 Partial Content` responses through unchanged

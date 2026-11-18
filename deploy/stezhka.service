@@ -1,11 +1,6 @@
 # /etc/systemd/system/stezhka.service
 #
-#   sudo useradd --system --home /srv/stezhka --shell /usr/sbin/nologin stezhka
-#   sudo -u stezhka python3 -m venv /srv/stezhka/venv
-#   sudo -u stezhka /srv/stezhka/venv/bin/pip install /path/to/stezhka/server
-#   sudo cp deploy/stezhka.env.example /etc/stezhka.env   # then edit
-#   sudo -u stezhka env $(cat /etc/stezhka.env | xargs) /srv/stezhka/venv/bin/stezhka set-password
-#   sudo systemctl enable --now stezhka
+#   Installed and kept up to date by deploy/install.sh (run via deploy/deploy.sh).
 #
 # Then route a subdomain or path in server_https.py to http://127.0.0.1:8470
 
@@ -29,7 +24,8 @@ PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=/srv/stezhka/data
-ReadOnlyPaths=/srv/syncthing/stezhka-inbox
+# "-" = optional: the inbox may not exist until Syncthing is set up
+ReadOnlyPaths=-/srv/syncthing/stezhka-inbox
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# stezhka-admin - run the stezhka CLI on the server as the service user, with the service's config.
+# Installed to /usr/local/sbin by install.sh. Examples:
+#
+#   sudo stezhka-admin set-password
+#   sudo stezhka-admin basemap            # download/refresh the self-hosted map
+#   sudo stezhka-admin enrich             # DEM elevation + weather for pending rides
+#   sudo stezhka-admin import /tmp/ride.gpx
+#   sudo stezhka-admin backup /srv/stezhka/data/backup.sqlite3
+set -euo pipefail
+[ "$(id -u)" -eq 0 ] || exec sudo "$0" "$@"
+set -a
+# shellcheck disable=SC1091
+. /etc/stezhka.env
+set +a
+cd /srv/stezhka
+exec runuser -u stezhka -- /srv/stezhka/venv/bin/stezhka "$@"

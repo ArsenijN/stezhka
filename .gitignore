@@ -11,3 +11,6 @@ dist/
 
 # per-user Claude Code settings (hook exemptions etc.)
 .claude/settings.local.json
+
+# deploy settings (host, port, key path)
+deploy/deploy.env
