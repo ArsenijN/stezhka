@@ -147,3 +147,11 @@ def test_change_password(client, cfg):
     client.post("/api/logout")
     assert client.post("/api/login", json={"password": "correct horse"}).status_code == 401
     assert client.post("/api/login", json={"password": "battery staple 42"}).status_code == 200
+
+
+def test_web_ui_files_are_revalidated(client):
+    # An upgrade must never mix a new app.js with a cached old module (seen in v0.4: showCompare
+    # missing from a cached map.js). no-cache = the browser asks every time; unchanged files get 304.
+    r = client.get("/js/map.js")
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-cache" and "etag" in r.headers
+    assert client.get("/js/map.js", headers={"If-None-Match": r.headers["etag"]}).status_code == 304

@@ -68,6 +68,11 @@ export class RideMap {
     this.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
     this.map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right');
     this.map.on('style.load', () => this._addLayers());
+    // OFM's dark style references sprite images its own sprite sheet lacks ("wood-pattern"):
+    // supply a transparent placeholder instead of a console warning per tile.
+    this.map.on('styleimagemissing', (e) => {
+      if (!this.map.hasImage(e.id)) this.map.addImage(e.id, { width: 1, height: 1, data: new Uint8Array(4) });
+    });
     this._bindEvents();
     this.ready = new Promise((resolve) => this.map.once('load', resolve));
     darkQuery.addEventListener('change', () => this._applyBasemap());

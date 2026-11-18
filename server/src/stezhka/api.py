@@ -191,6 +191,10 @@ def create_app(cfg: Config) -> FastAPI:
             resp.headers.setdefault("Cache-Control", "no-store")
         elif path.startswith(BASEMAP_PREFIX):
             resp.headers.setdefault("Cache-Control", "private, max-age=86400")
+        else:
+            # Web UI files are not versioned in their URLs: make the browser revalidate every time
+            # (a cheap 304 via ETag) so an upgrade never mixes a new app.js with a cached old map.js.
+            resp.headers.setdefault("Cache-Control", "no-cache")
         return resp
 
     @app.exception_handler(ApiError)
