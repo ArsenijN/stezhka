@@ -105,12 +105,4 @@ inbox) enriches pending rides; the CLI does it inline after `import`. Each enric
 `STEZHKA_ENRICH=0` turns all of this (and every outbound request it makes) off.
 
 ## Roadmap
-1. ~~GPX import, cleaning, stops, web map + profile~~ (done)
-2. ~~Self-hosted basemap~~, ~~DEM elevation + weather enrichment~~ (done)
-3. Real-ride tuning: Poco C65 vs iPhone recordings side by side (accuracy, stop detection, speed)
-4. Bikes UI, ride editing, deleting with tombstones (so the inbox doesn't re-import deleted rides)
-5. OSM graph + map matching + per-segment aggregation ("typical speed" map layer, explored-roads
-   layer, bridge/tunnel elevation fix)
-6. ETA for a drawn/selected route
-7. Routing with explore level 0–3, discovery loops (orienteering heuristic), GPX export for navigation
-8. Licence choice + F-Droid packaging, if it goes public
+Moved to [ROADMAP.md](../ROADMAP.md).

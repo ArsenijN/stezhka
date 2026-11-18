@@ -7,7 +7,7 @@ server, see where you are fast or slow, and (soon) learn per-road-segment speeds
 and get routes that mix known fast roads with paths you have never ridden.
 
 Status: **phase 1**: GPX import, cleaning, stop detection, web map with speed-coloured track and
-elevation/speed profile. See [docs/decisions.md](docs/decisions.md) for the design and roadmap.
+elevation/speed profile. What comes next: [ROADMAP.md](ROADMAP.md). Why things are built this way: [docs/decisions.md](docs/decisions.md).
 
 ## Layout
 
