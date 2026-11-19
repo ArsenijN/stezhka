@@ -217,7 +217,8 @@ function renderStats() {
   }
   const stops = r.stops.filter((s) => s.kind === 'stop');
   const stopTime = stops.reduce((a, s) => a + (s.end_t - s.start_t), 0);
-  box.append(
+  // Element.append() would turn null into the text "null", so drop the empty parts first
+  box.append(...[
     state.editing ? editForm(r) : titleRow(r),
     !state.editing && r.notes ? el('p', { class: 'ride-notes' }, r.notes) : null,
     el('div', { class: 'stat-grid' },
@@ -232,7 +233,7 @@ function renderStats() {
     weatherRow(r),
     compareRow(r),
     el('p', { class: 'note' }, r.ele_source === 'dem' ? t('stats.elevation_source_dem') : t('stats.elevation_source_gps')),
-  );
+  ].filter((part) => part != null));
 }
 
 function windText(w) {

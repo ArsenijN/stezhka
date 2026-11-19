@@ -49,6 +49,35 @@ function speedColorExpr() {
   return expr;
 }
 
+/**
+ * Group consecutive track intervals with the same speed colour (2 km/h steps) into one LineString.
+ * One feature per 1 s interval made each piece ~4 m long; MapLibre drops features smaller than about
+ * a pixel when zoomed out, so dense (iPhone) tracks showed gaps or vanished until zoomed in.
+ */
+export function speedRuns(pts, stepKmh = 2) {
+  const runs = [];
+  let run = null;
+  for (let i = 0; i < pts.length - 1; i++) {
+    if (pts.segment[i] !== pts.segment[i + 1]) { run = null; continue; }
+    const v = fmt.kmh((pts.speed[i] + pts.speed[i + 1]) / 2);
+    const bucket = Math.round(v / stepKmh);
+    if (run && run.bucket === bucket && run.i1 === i) {
+      run.coords.push([pts.lon[i + 1], pts.lat[i + 1]]);
+      run.i1 = i + 1;
+      run.sum += v;
+      run.n += 1;
+    } else {
+      run = { bucket, i0: i, i1: i + 1, sum: v, n: 1, coords: [[pts.lon[i], pts.lat[i]], [pts.lon[i + 1], pts.lat[i + 1]]] };
+      runs.push(run);
+    }
+  }
+  return runs.map((r) => ({
+    type: 'Feature',
+    properties: { i0: r.i0, i1: r.i1, kmh: r.sum / r.n },
+    geometry: { type: 'LineString', coordinates: r.coords },
+  }));
+}
+
 export class RideMap {
   constructor(container, basemap, attributions = []) {
     this.basemap = basemap || { mode: 'none', styles: {} };
@@ -109,7 +138,8 @@ export class RideMap {
     const m = this.map;
     const dark = theme() === 'dark';
     if (m.getSource('track')) return;
-    m.addSource('track', { type: 'geojson', data: this.track });
+    // tolerance 0: no simplification, so short pieces of a dense (1 s) track are never dropped
+    m.addSource('track', { type: 'geojson', data: this.track, tolerance: 0 });
     m.addSource('stops', { type: 'geojson', data: this.stops });
     m.addSource('cursor', { type: 'geojson', data: this.cursor });
     m.addSource('compare', { type: 'geojson', data: this.compare });
@@ -157,8 +187,8 @@ export class RideMap {
     const m = this.map;
     m.on('mousemove', 'track-hit', (e) => {
       m.getCanvas().style.cursor = 'crosshair';
-      const i = e.features?.[0]?.properties?.i;
-      if (i != null) this._emitHover(i);
+      const props = e.features?.[0]?.properties;
+      if (props?.i0 != null) this._emitHover(this._nearestIndex(props.i0, props.i1, e.lngLat));
     });
     m.on('mouseleave', 'track-hit', () => {
       m.getCanvas().style.cursor = '';
@@ -191,16 +221,7 @@ export class RideMap {
   async showRide(pts, stops) {
     await this.ready;
     this.points = pts;
-    const features = [];
-    for (let i = 0; i < pts.length - 1; i++) {
-      if (pts.segment[i] !== pts.segment[i + 1]) continue;
-      features.push({
-        type: 'Feature',
-        properties: { i, kmh: fmt.kmh((pts.speed[i] + pts.speed[i + 1]) / 2) },
-        geometry: { type: 'LineString', coordinates: [[pts.lon[i], pts.lat[i]], [pts.lon[i + 1], pts.lat[i + 1]]] },
-      });
-    }
-    this._setData('track', { type: 'FeatureCollection', features });
+    this._setData('track', { type: 'FeatureCollection', features: speedRuns(pts) });
     this._setData('stops', {
       type: 'FeatureCollection',
       features: stops.map((s) => ({
@@ -231,6 +252,21 @@ export class RideMap {
       type: 'FeatureCollection',
       features: [{ type: 'Feature', properties: {}, geometry: { type: 'MultiLineString', coordinates: lines } }],
     });
+  }
+
+  /** Index of the track point within [i0, i1] closest to the mouse position. */
+  _nearestIndex(i0, i1, lngLat) {
+    const d = this.points;
+    const k = Math.cos((lngLat.lat * Math.PI) / 180);
+    let best = i0;
+    let bestD = Infinity;
+    for (let i = i0; i <= i1; i++) {
+      const dx = (d.lon[i] - lngLat.lng) * k;
+      const dy = d.lat[i] - lngLat.lat;
+      const dd = dx * dx + dy * dy;
+      if (dd < bestD) { bestD = dd; best = i; }
+    }
+    return best;
   }
 
   setCursor(i) {
