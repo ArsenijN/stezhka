@@ -122,6 +122,37 @@ def session_valid(conn: sqlite3.Connection, token: str | None) -> bool:
     return bool(row) and row[0] > time.time()
 
 
+# --- upload keys -------------------------------------------------------------------------------
+# A key can only upload rides (POST /api/rides with "Authorization: Bearer <key>"). It is shown
+# once at creation; only its SHA-256 is stored. 256 random bits: guessing is not a concern.
+
+UPLOAD_TOKEN_PREFIX = "stz_up_"
+
+
+def create_upload_token(conn: sqlite3.Connection, name: str) -> tuple[int, str]:
+    token = UPLOAD_TOKEN_PREFIX + secrets.token_urlsafe(32)
+    cur = conn.execute(
+        "INSERT INTO upload_tokens(name, token_hash, created_at) VALUES (?, ?, ?)",
+        (name, _token_hash(token), time.time()),
+    )
+    return cur.lastrowid, token
+
+
+def upload_token_valid(conn: sqlite3.Connection, token: str | None) -> bool:
+    if not token or not token.startswith(UPLOAD_TOKEN_PREFIX):
+        return False
+    cur = conn.execute(
+        "UPDATE upload_tokens SET last_used_at = ? WHERE token_hash = ?", (time.time(), _token_hash(token))
+    )
+    return cur.rowcount == 1
+
+
+def bearer(authorization: str | None) -> str | None:
+    if authorization and authorization[:7].lower() == "bearer ":
+        return authorization[7:].strip()
+    return None
+
+
 def delete_session(conn: sqlite3.Connection, token: str | None) -> None:
     if token:
         conn.execute("DELETE FROM sessions WHERE token_hash = ?", (_token_hash(token),))

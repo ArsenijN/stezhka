@@ -29,7 +29,19 @@
     "repeat_password": "Repeat the new password",
     "change_password": "Change password",
     "password_mismatch": "The new passwords differ.",
-    "password_changed": "Password changed. Other devices are signed out."
+    "password_changed": "Password changed. Other devices are signed out.",
+    "keys": "Upload keys",
+    "keys_help": "A key lets a device upload rides without signing in (e.g. the iOS Shortcut in docs/ios-shortcut.md). It can do nothing else.",
+    "key_name": "Device name",
+    "add_key": "Create",
+    "key_once": "Copy the key now: it is shown only once.",
+    "copy": "Copy",
+    "copied": "Copied.",
+    "key_used": "last used {{when}}",
+    "key_unused": "never used",
+    "no_keys": "No keys yet.",
+    "revoke": "Revoke",
+    "revoke_confirm": "Revoke the key “{{name}}”? Uploads with it will stop working."
   },
   "rides": {
     "title": "Rides",

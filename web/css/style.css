@@ -165,6 +165,8 @@ h1, h2 { margin: 0; }
 .inline-form { display: flex; gap: 6px; flex-wrap: wrap; }
 .inline-form input { flex: 1 1 140px; }
 .stack-form { display: grid; gap: 6px; }
+.key-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.key-new input { font-family: ui-monospace, monospace; font-size: 12px; }
 
 /* phone */
 @media (max-width: 760px) {

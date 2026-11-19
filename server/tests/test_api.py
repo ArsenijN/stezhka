@@ -160,3 +160,28 @@ def test_web_ui_files_are_revalidated(client):
 def test_source_link_offered_before_login(client):
     # AGPL-3.0 section 13: every user of the service must be offered the source
     assert client.get("/api/session").json()["source_url"].startswith("https://")
+
+
+def test_upload_key_can_only_upload(client, cfg):
+    login(client, cfg)
+    created = client.post("/api/tokens", json={"name": "iPhone shortcut"}).json()
+    key = created["token"]
+    assert key.startswith("stz_up_")
+    listed = client.get("/api/tokens").json()["tokens"]
+    assert [t["name"] for t in listed] == ["iPhone shortcut"] and "token" not in listed[0]
+    client.post("/api/logout")
+
+    h = {"Authorization": f"Bearer {key}", "X-Filename": "2026-11-17T15%3A14%3A12%2B0200.gpx"}
+    r = client.post("/api/rides", content=commute().gpx(), headers=h)
+    assert r.status_code == 201 and r.json()["created"] is True
+    assert connect(cfg.db_path).execute("SELECT source_name FROM rides").fetchone()[0] == "2026-11-17T15:14:12+0200.gpx"
+    # the key opens nothing else
+    for path in ("/api/rides", "/api/tokens", "/api/config", "/api/bikes"):
+        assert client.get(path, headers=h).status_code == 401, path
+    assert client.post("/api/rides", content=commute().gpx(), headers={"Authorization": "Bearer stz_up_wrong"}).status_code == 401
+
+    login(client, cfg)
+    assert connect(cfg.db_path).execute("SELECT last_used_at FROM upload_tokens").fetchone()[0] is not None
+    assert client.delete(f"/api/tokens/{created['id']}").json() == {"ok": True}
+    client.post("/api/logout")
+    assert client.post("/api/rides", content=commute().gpx(), headers=h).status_code == 401  # revoked

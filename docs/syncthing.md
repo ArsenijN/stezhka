@@ -55,14 +55,14 @@ inbox.
 iOS has no official Syncthing app and limits apps running in the background, so sync only happens
 while a Syncthing app is open. Options, simplest first:
 
-1. **Upload in the browser** (works today, nothing to install): in Open GPX Tracker share the
+1. **Upload in the browser** (nothing to install): in Open GPX Tracker share the
    GPX → *Save to Files*; later open your Stezhka site in Safari → **Upload GPX** (several files at
    once are fine; duplicates are recognised and skipped).
 2. **Synctrain** (free, open source) or **Möbius Sync** (paid) as an iOS Syncthing client: share
    Open GPX Tracker's folder (Files → On My iPhone → GPX Tracker) the same way as on Android, then
    open the app at home for a moment so it syncs.
-3. **Planned**: a per-device upload token + an iOS Shortcut on the share sheet
-   ("Share → Send to Stezhka"), one tap after each ride. See ROADMAP.
+3. **Share-sheet Shortcut** (recommended): "Share → Send to Stezhka", one tap after each ride,
+   using an upload key from Settings. Setup: [ios-shortcut.md](ios-shortcut.md).
 
 ## Checking it works
 

@@ -62,6 +62,10 @@ class PasswordChange(BaseModel):
     new: str = Field(max_length=1024)
 
 
+class TokenBody(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
 class RidePatch(BaseModel):
     name: str | None = Field(default=None, max_length=200)
     notes: str | None = Field(default=None, max_length=10_000)
@@ -217,6 +221,14 @@ def create_app(cfg: Config) -> FastAPI:
             raise ApiError(401, ErrorCode.UNAUTHORIZED)
         return conn
 
+    def require_upload_auth(request: Request, conn: sqlite3.Connection = Depends(db)) -> sqlite3.Connection:
+        """Logged-in browser, or an upload key (Authorization: Bearer stz_up_...)."""
+        if auth.session_valid(conn, request.cookies.get(auth.SESSION_COOKIE)):
+            return conn
+        if auth.upload_token_valid(conn, auth.bearer(request.headers.get("authorization"))):
+            return conn
+        raise ApiError(401, ErrorCode.UNAUTHORIZED)
+
     # --- session -------------------------------------------------------------------------------
 
     @app.get("/api/session")
@@ -354,7 +366,7 @@ def create_app(cfg: Config) -> FastAPI:
         return {"fields": POINT_FIELDS, "rows": [list(r) for r in rows]}
 
     @app.post("/api/rides", status_code=201)
-    async def upload_ride(request: Request, response: Response, conn: sqlite3.Connection = Depends(require_auth)):
+    async def upload_ride(request: Request, response: Response, conn: sqlite3.Connection = Depends(require_upload_auth)):
         declared = request.headers.get("content-length")
         if declared and declared.isdigit() and int(declared) > MAX_FILE_BYTES:
             raise ApiError(413, ErrorCode.FILE_TOO_LARGE)
@@ -376,6 +388,24 @@ def create_app(cfg: Config) -> FastAPI:
         else:
             response.status_code = 200
         return {"id": res.ride_id, "created": res.created}
+
+    # --- upload keys ---------------------------------------------------------------------------
+
+    @app.get("/api/tokens")
+    def list_tokens(conn: sqlite3.Connection = Depends(require_auth)):
+        rows = conn.execute("SELECT id, name, created_at, last_used_at FROM upload_tokens ORDER BY created_at").fetchall()
+        return {"tokens": [dict(r) for r in rows]}
+
+    @app.post("/api/tokens", status_code=201)
+    def add_token(body: TokenBody, conn: sqlite3.Connection = Depends(require_auth)):
+        token_id, token = auth.create_upload_token(conn, body.name.strip())
+        return {"id": token_id, "token": token}  # the only time the key is ever shown
+
+    @app.delete("/api/tokens/{token_id}")
+    def revoke_token(token_id: int, conn: sqlite3.Connection = Depends(require_auth)):
+        if conn.execute("DELETE FROM upload_tokens WHERE id = ?", (token_id,)).rowcount != 1:
+            raise ApiError(404, ErrorCode.NOT_FOUND)
+        return {"ok": True}
 
     @app.delete("/api/rides/{ride_id}")
     def remove_ride(ride_id: int, conn: sqlite3.Connection = Depends(require_auth)):

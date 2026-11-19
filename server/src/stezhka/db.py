@@ -142,6 +142,16 @@ MIGRATIONS: list[str] = [
         deleted_at REAL NOT NULL
     ) WITHOUT ROWID;
     """,
+    # 4: per-device upload keys (e.g. an iOS Shortcut on the share sheet); upload only
+    """
+    CREATE TABLE upload_tokens (
+        id           INTEGER PRIMARY KEY,
+        name         TEXT NOT NULL,
+        token_hash   TEXT NOT NULL UNIQUE,
+        created_at   REAL NOT NULL,
+        last_used_at REAL
+    );
+    """,
 ]
 
 

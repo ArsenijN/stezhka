@@ -77,6 +77,22 @@
       </form>
     </section>
     <section>
+      <h3 data-i18n="settings.keys"></h3>
+      <p class="note" data-i18n="settings.keys_help"></p>
+      <ul id="key-list" class="bike-list"></ul>
+      <form id="key-form" class="inline-form">
+        <input id="key-name" required maxlength="100" data-i18n-attr="placeholder:settings.key_name,aria-label:settings.key_name">
+        <button type="submit" class="btn primary small" data-i18n="settings.add_key"></button>
+      </form>
+      <div id="key-new" class="key-new" hidden>
+        <p class="note" data-i18n="settings.key_once"></p>
+        <div class="inline-form">
+          <input id="key-value" readonly>
+          <button id="key-copy" type="button" class="btn small" data-i18n="settings.copy"></button>
+        </div>
+      </div>
+    </section>
+    <section>
       <h3 data-i18n="settings.password"></h3>
       <form id="password-form" class="stack-form">
         <input id="pw-current" type="password" autocomplete="current-password" required data-i18n-attr="placeholder:settings.current_password,aria-label:settings.current_password">
