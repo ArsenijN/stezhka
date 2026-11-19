@@ -31,3 +31,28 @@ export function toast(message, kind = 'info') {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { box.hidden = true; }, 5000);
 }
+
+// Line icons (24x24, stroke = currentColor). Constant markup, never user data.
+const ICONS = {
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  upload: '<path d="M12 15V4M7 9l5-5 5 5M5 19h14"/>',
+  settings: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16v4z"/>',
+  trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+  chevron: '<path d="M6 9l6 6 6-6"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>',
+};
+
+export function icon(name) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', `icon icon-${name}`);
+  svg.innerHTML = ICONS[name];
+  return svg;
+}
+
+/** Icon-only button; the label is its accessible name and tooltip. */
+export function iconButton(name, label, onclick, extraClass = '') {
+  return el('button', { type: 'button', class: `btn icon-btn ${extraClass}`, 'aria-label': label, title: label, onclick }, icon(name));
+}

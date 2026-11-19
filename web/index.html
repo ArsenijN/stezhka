@@ -27,19 +27,21 @@
 
   <div id="app" class="app" hidden>
     <header class="topbar">
+      <button id="drawer-open" class="btn icon-btn drawer-toggle" type="button" data-i18n-attr="aria-label:rides.title,title:rides.title"><span data-icon="menu"></span></button>
       <a class="brand" href="#"><img src="icon.svg" alt="" width="24" height="24"> Stezhka</a>
       <span class="spacer"></span>
-      <label class="btn">
+      <label class="btn upload-btn" data-i18n-attr="title:actions.upload">
         <!-- no "accept" filter: iOS knows no GPX file type and greys every file out; the server validates -->
         <input id="upload" type="file" multiple class="visually-hidden">
-        <span data-i18n="actions.upload"></span>
+        <span data-icon="upload"></span>
+        <span class="btn-text" data-i18n="actions.upload"></span>
       </label>
-      <select id="lang" class="btn" data-i18n-attr="aria-label:settings.language"></select>
-      <button id="settings-open" class="btn" type="button" data-i18n="actions.settings"></button>
-      <button id="logout" class="btn ghost" type="button" data-i18n="actions.logout"></button>
+      <button id="settings-open" class="btn icon-btn" type="button" data-i18n-attr="aria-label:actions.settings,title:actions.settings"><span data-icon="settings"></span></button>
     </header>
 
-    <aside class="sidebar">
+    <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+
+    <aside id="sidebar" class="sidebar">
       <div class="sidebar-head">
         <h2 data-i18n="rides.title"></h2>
         <span id="ride-count" class="muted"></span>
@@ -94,6 +96,10 @@
       </div>
     </section>
     <section>
+      <h3 data-i18n="settings.language"></h3>
+      <select id="lang" data-i18n-attr="aria-label:settings.language"></select>
+    </section>
+    <section>
       <h3 data-i18n="settings.password"></h3>
       <form id="password-form" class="stack-form">
         <input id="pw-current" type="password" autocomplete="current-password" required data-i18n-attr="placeholder:settings.current_password,aria-label:settings.current_password">
@@ -102,6 +108,9 @@
         <button type="submit" class="btn primary small" data-i18n="settings.change_password"></button>
         <p id="pw-msg" class="error" role="alert"></p>
       </form>
+    </section>
+    <section class="settings-foot">
+      <button id="logout" class="btn small" type="button" data-i18n="actions.logout"></button>
     </section>
   </dialog>
 

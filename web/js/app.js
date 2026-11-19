@@ -6,7 +6,7 @@ import * as fmt from './format.js';
 import { RideMap, SPEED_STOPS } from './map.js';
 import { ProfileChart } from './chart.js';
 import { initSettings } from './settings.js';
-import { $, el, errorText, toast } from './ui.js';
+import { $, el, errorText, icon, iconButton, toast } from './ui.js';
 
 const state = {
   rides: [],
@@ -19,7 +19,33 @@ const state = {
   map: null,
   chart: null,
   config: null,
+  details: initialDetails(), // full stats (true) or the essentials only
+  eleInfo: false, // elevation-source note shown
 };
+
+const NARROW = matchMedia('(max-width: 760px)');
+
+// Phones start with the essentials so the map gets the screen; the choice is remembered per browser.
+function initialDetails() {
+  try {
+    const saved = localStorage.getItem('stezhka.details');
+    if (saved === '1' || saved === '0') return saved === '1';
+  } catch { /* storage blocked: use the default */ }
+  return !matchMedia('(max-width: 760px)').matches;
+}
+
+function setDetails(open) {
+  state.details = open;
+  try { localStorage.setItem('stezhka.details', open ? '1' : '0'); } catch { /* not essential */ }
+  renderStats();
+}
+
+// --- rides drawer (phones) ----------------------------------------------------------------------
+
+function setDrawer(open) {
+  document.body.classList.toggle('drawer-open', open && NARROW.matches);
+  $('drawer-backdrop').hidden = !(open && NARROW.matches);
+}
 
 // --- login --------------------------------------------------------------------------------------
 
@@ -48,6 +74,7 @@ async function onLogin(e) {
 }
 
 async function onLogout() {
+  $('settings').close();
   try { await api('logout', { method: 'POST' }); } catch { /* session is gone either way */ }
   location.hash = '';
   showLogin(true);
@@ -92,7 +119,7 @@ function renderRideList() {
     const meta = [fmt.distance(r.distance_m), fmt.duration(r.moving_s), fmt.speed(r.avg_moving_mps)].join(' · ');
     list.append(el('li', {},
       el('a', { href: `#ride=${r.id}`, class: 'ride-item', 'aria-current': selected ? 'true' : 'false' },
-        el('span', { class: 'ride-date' }, fmt.weekdayDate(r.started_at), ' ', fmt.time(r.started_at)),
+        el('span', { class: 'ride-date' }, fmt.rideDate(r.started_at)),
         el('span', { class: 'ride-name' }, rideTitle(r)),
         el('span', { class: 'ride-meta' }, meta),
         r.bike_name ? el('span', { class: 'ride-bike' }, r.bike_name) : null,
@@ -113,21 +140,33 @@ async function loadBikes() {
 
 // --- ride view ----------------------------------------------------------------------------------
 
-function stat(label, value, extraClass = '') {
+function stat(label, value, extraClass = '', labelExtra = null) {
   return el('div', { class: `stat ${extraClass}` },
-    el('span', { class: 'stat-label' }, label),
+    el('span', { class: 'stat-label' }, label, labelExtra),
     el('span', { class: 'stat-value' }, value));
 }
 
 function titleRow(r) {
+  const more = iconButton('chevron', state.details ? t('stats.less') : t('stats.more'),
+    () => setDetails(!state.details), state.details ? 'flip' : '');
+  more.setAttribute('aria-expanded', String(state.details));
   return el('div', { class: 'ride-head' },
     el('h2', { class: 'ride-title' }, rideTitle(r),
-      el('span', { class: 'muted' }, ' · ', fmt.dateTime(r.started_at)),
+      el('span', { class: 'muted' }, ' · ', fmt.rideDate(r.started_at)),
       r.bike_name ? el('span', { class: 'ride-bike' }, ' · ', r.bike_name) : null),
-    el('span', { class: 'spacer' }),
-    el('button', { type: 'button', class: 'btn small', onclick: () => { state.editing = true; renderStats(); } }, t('actions.edit')),
-    el('button', { type: 'button', class: 'btn small danger', onclick: onDelete }, t('actions.delete')),
+    el('div', { class: 'ride-actions' },
+      iconButton('edit', t('actions.edit'), () => { state.editing = true; state.details = true; renderStats(); }),
+      iconButton('trash', t('actions.delete'), onDelete, 'danger'),
+      more),
   );
+}
+
+function elevationInfoButton() {
+  const b = el('button', {
+    type: 'button', class: 'info-btn', 'aria-label': t('stats.elevation_info'), title: t('stats.elevation_info'),
+    'aria-expanded': String(state.eleInfo), onclick: () => { state.eleInfo = !state.eleInfo; renderStats(); },
+  }, icon('info'));
+  return b;
 }
 
 function editForm(r) {
@@ -186,7 +225,7 @@ function compareRow(r) {
   const sel = el('select', { id: 'compare', onchange: (e) => setCompare(e.target.value ? Number(e.target.value) : null) },
     el('option', { value: '' }, t('compare.none')),
     ...others.map((o) => el('option', { value: String(o.id) },
-      `${fmt.weekdayDate(o.started_at)} ${fmt.time(o.started_at)} · ${fmt.distance(o.distance_m)}${o.creator ? ` · ${o.creator}` : ''}`)));
+      `${fmt.rideDate(o.started_at)} · ${fmt.distance(o.distance_m)}${o.creator ? ` · ${o.creator}` : ''}`)));
   sel.value = state.compareId ? String(state.compareId) : '';
   const other = state.rides.find((o) => o.id === state.compareId);
   return el('div', { class: 'compare-row' },
@@ -215,24 +254,31 @@ function renderStats() {
     box.append(el('p', { class: 'muted' }, state.rides.length ? t('rides.select') : t('rides.empty')));
     return;
   }
+  const full = state.details || state.editing;
   const stops = r.stops.filter((s) => s.kind === 'stop');
   const stopTime = stops.reduce((a, s) => a + (s.end_t - s.start_t), 0);
+  const grid = el('div', { class: 'stat-grid' },
+    stat(t('stats.distance'), fmt.distance(r.distance_m), 'primary'),
+    stat(t('stats.moving_time'), fmt.duration(r.moving_s), 'primary'),
+    stat(t('stats.avg_speed'), fmt.speed(r.avg_moving_mps), 'primary'));
+  if (full) {
+    grid.append(
+      stat(t('stats.max_speed'), fmt.speed(r.max_mps)),
+      stat(t('stats.elapsed_time'), fmt.duration(r.elapsed_s)),
+      stat(t('stats.climb'), `↑ ${fmt.elevation(r.ascent_m)}  ↓ ${fmt.elevation(r.descent_m)}`, '', elevationInfoButton()),
+      stat(t('stats.stops'), t('stats.stop_summary', { count: stops.length, time: fmt.duration(stopTime) })),
+      ...weatherStats(r));
+  }
   // Element.append() would turn null into the text "null", so drop the empty parts first
   box.append(...[
     state.editing ? editForm(r) : titleRow(r),
-    !state.editing && r.notes ? el('p', { class: 'ride-notes' }, r.notes) : null,
-    el('div', { class: 'stat-grid' },
-      stat(t('stats.distance'), fmt.distance(r.distance_m), 'primary'),
-      stat(t('stats.moving_time'), fmt.duration(r.moving_s), 'primary'),
-      stat(t('stats.avg_speed'), fmt.speed(r.avg_moving_mps), 'primary'),
-      stat(t('stats.max_speed'), fmt.speed(r.max_mps)),
-      stat(t('stats.elapsed_time'), fmt.duration(r.elapsed_s)),
-      stat(t('stats.climb'), `↑ ${fmt.elevation(r.ascent_m)}  ↓ ${fmt.elevation(r.descent_m)}`),
-      stat(t('stats.stops'), t('stats.stop_summary', { count: stops.length, time: fmt.duration(stopTime) })),
-    ),
-    weatherRow(r),
-    compareRow(r),
-    el('p', { class: 'note' }, r.ele_source === 'dem' ? t('stats.elevation_source_dem') : t('stats.elevation_source_gps')),
+    full && !state.editing && r.notes ? el('p', { class: 'ride-notes' }, r.notes) : null,
+    grid,
+    full && state.eleInfo
+      ? el('p', { class: 'note' }, r.ele_source === 'dem' ? t('stats.elevation_source_dem') : t('stats.elevation_source_gps'))
+      : null,
+    full && !r.weather ? el('p', { class: 'note' }, r.enrich_error ? t('weather.unavailable') : t('weather.pending')) : null,
+    full ? compareRow(r) : null,
   ].filter((part) => part != null));
 }
 
@@ -245,18 +291,16 @@ function windText(w) {
   return `${base} · ${t('weather.crosswind')}`;
 }
 
-function weatherRow(r) {
+function weatherStats(r) {
   const w = r.weather;
-  if (!w) {
-    return el('p', { class: 'note' }, r.enrich_error ? t('weather.unavailable') : t('weather.pending'));
-  }
+  if (!w) return [];
   let road = t(`weather.wetness.${w.wetness}`);
   if (w.precip_ride_mm >= 0.1) road += ` · ${t('weather.rain_during', { amount: fmt.precipitation(w.precip_ride_mm) })}`;
-  return el('div', { class: 'stat-grid weather' },
+  return [
     stat(t('stats.temperature'), fmt.temperature(w.temperature_c)),
-    stat(t('stats.wind'), windText(w)),
     stat(t('stats.road'), road),
-  );
+    stat(t('stats.wind'), windText(w), 'wide'),
+  ];
 }
 
 function renderLegend() {
@@ -351,8 +395,15 @@ async function startApp() {
     state.chart.onHover((i) => state.map.setCursor(i));
     state.map.onHover((i) => state.chart.setCursor(i));
     state.chart.onSelect((i) => { state.map.setPinned(i); state.map.panToPoint(i); });
+    // tapping the track pins that point too; the map is already looking at it, so no pan
+    state.map.onSelect((i) => { state.map.setPinned(i); state.chart.setPinned(i); });
     renderLegend();
-    window.addEventListener('hashchange', () => selectRide(rideIdFromHash()));
+    window.addEventListener('hashchange', () => { setDrawer(false); selectRide(rideIdFromHash()); });
+    $('drawer-open').addEventListener('click', () => setDrawer(true));
+    $('drawer-backdrop').addEventListener('click', () => setDrawer(false));
+    $('ride-list').addEventListener('click', () => setDrawer(false)); // also when the open ride is tapped again
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setDrawer(false); });
+    NARROW.addEventListener('change', () => setDrawer(false));
     $('bike-filter').addEventListener('change', (e) => { state.bikeFilter = e.target.value; renderRideList(); });
     initSettings((bikes) => { state.bikes = bikes; renderBikeFilter(); renderRideList(); renderStats(); });
   }
@@ -363,6 +414,7 @@ async function startApp() {
 }
 
 async function boot() {
+  for (const n of document.querySelectorAll('[data-icon]')) n.replaceWith(icon(n.dataset.icon));
   await initI18n();
   buildLanguagePicker();
   onLocaleChange(() => {

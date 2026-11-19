@@ -61,8 +61,12 @@ export function dateTime(unixSeconds) {
   return new Intl.DateTimeFormat(locale(), { dateStyle: 'medium', timeStyle: 'short' }).format(unixSeconds * 1000);
 }
 
-export function weekdayDate(unixSeconds) {
-  return new Intl.DateTimeFormat(locale(), { weekday: 'short', day: 'numeric', month: 'short' }).format(unixSeconds * 1000);
+/** Ride start: "Wed, 18 Nov, 20:03"; the year only when it is not the current one. */
+export function rideDate(unixSeconds) {
+  const d = new Date(unixSeconds * 1000);
+  const opts = { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' };
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+  return new Intl.DateTimeFormat(locale(), opts).format(d);
 }
 
 export function time(unixSeconds) {

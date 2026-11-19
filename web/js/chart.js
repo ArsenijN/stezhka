@@ -27,14 +27,24 @@ export class ProfileChart {
     this.selectHandlers = new Set();
     new ResizeObserver(() => this.draw()).observe(canvas);
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => this.draw());
+    // Mouse: hover follows, click pins. Touch: the finger scrubs along the profile and the point under
+    // it when lifted is pinned (a 'click' would only report where the touch started).
+    canvas.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'mouse') canvas.setPointerCapture(e.pointerId);
+      this._pointer(e);
+    });
     canvas.addEventListener('pointermove', (e) => this._pointer(e));
-    canvas.addEventListener('pointerleave', () => { this.setCursor(null); this._emit(null); });
-    // Click (or tap) = select that point; the app pans the map to it.
-    canvas.addEventListener('click', (e) => {
+    canvas.addEventListener('pointerup', (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
       const i = this._indexAt(e);
       if (i == null) return;
       this.setPinned(i);
       for (const fn of this.selectHandlers) fn(i);
+      if (e.pointerType !== 'mouse') { this.setCursor(null); this._emit(null); }
+    });
+    canvas.addEventListener('pointercancel', () => { this.setCursor(null); this._emit(null); });
+    canvas.addEventListener('pointerleave', (e) => {
+      if (e.pointerType === 'mouse') { this.setCursor(null); this._emit(null); }
     });
   }
 

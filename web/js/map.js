@@ -87,6 +87,7 @@ export class RideMap {
     this.compare = EMPTY;
     this.points = null;
     this.hoverHandlers = new Set();
+    this.selectHandlers = new Set();
     this.map = new maplibregl.Map({
       container,
       style: blankStyle(theme()),
@@ -107,6 +108,9 @@ export class RideMap {
     });
     this._bindEvents();
     this.ready = new Promise((resolve) => this.map.once('load', resolve));
+    // On a narrow map MapLibre opens the compact attribution at start, covering the legend; keep it
+    // behind its (i) button like it is after the first drag.
+    this.ready.then(() => container.querySelector('.maplibregl-compact-show')?.classList.remove('maplibregl-compact-show'));
     darkQuery.addEventListener('change', () => this._applyBasemap());
     this._applyBasemap();
   }
@@ -194,6 +198,13 @@ export class RideMap {
       m.getCanvas().style.cursor = '';
       this._emitHover(null);
     });
+    // Click / tap on the track = pin that point (shared with the chart).
+    m.on('click', 'track-hit', (e) => {
+      const props = e.features?.[0]?.properties;
+      if (props?.i0 == null) return;
+      const i = this._nearestIndex(props.i0, props.i1, e.lngLat);
+      for (const fn of this.selectHandlers) fn(i);
+    });
     m.on('click', 'stops', (e) => {
       const p = e.features?.[0]?.properties;
       if (!p) return;
@@ -210,6 +221,7 @@ export class RideMap {
   }
 
   onHover(fn) { this.hoverHandlers.add(fn); }
+  onSelect(fn) { this.selectHandlers.add(fn); }
   _emitHover(i) { for (const fn of this.hoverHandlers) fn(i); }
 
   _setData(id, fc) {

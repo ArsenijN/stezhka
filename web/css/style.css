@@ -102,9 +102,18 @@ h1, h2 { margin: 0; }
 .ride-title .muted { font-weight: 400; }
 .stat-grid { display: flex; flex-wrap: wrap; gap: 6px 22px; }
 .stat { display: grid; }
-.stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.stat-label { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .stat-value { font-size: 15px; font-variant-numeric: tabular-nums; }
 .stat.primary .stat-value { font-size: 20px; font-weight: 650; }
+
+/* icons */
+.icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.btn.icon-btn { width: 34px; padding: 0; justify-content: center; }
+.btn.icon-btn.flip .icon { transform: rotate(180deg); }
+.info-btn { display: inline-grid; place-items: center; width: 22px; height: 22px; margin: -4px 0; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; }
+.info-btn .icon { width: 15px; height: 15px; }
+.info-btn[aria-expanded="true"] { color: var(--accent); }
+.drawer-toggle { display: none; }
 
 /* map + legend */
 .map-wrap { position: relative; min-height: 0; }
@@ -125,7 +134,8 @@ h1, h2 { margin: 0; }
 
 /* chart */
 .chart-wrap { border-top: 1px solid var(--border); background: var(--surface); padding: 4px 8px; min-height: 0; }
-.chart-wrap canvas { width: 100%; height: 100%; display: block; touch-action: pan-y; cursor: crosshair; }
+/* touch-action none: a finger scrubs the profile instead of scrolling the page */
+.chart-wrap canvas { width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
 
 /* toast */
 .toast {
@@ -137,8 +147,9 @@ h1, h2 { margin: 0; }
 /* ride actions, editing, compare */
 .btn.small { height: 28px; padding: 0 10px; font-size: 13px; }
 .btn.danger { color: var(--danger); }
-.ride-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
-.ride-head .ride-title { margin: 0; }
+.ride-head { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.ride-head .ride-title { margin: 0; flex: 1; min-width: 0; padding-top: 4px; }
+.ride-actions { display: flex; gap: 4px; flex: none; }
 .ride-notes { margin: 0 0 8px; white-space: pre-wrap; }
 .edit-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px 12px; margin-bottom: 10px; }
 .edit-form label { display: grid; gap: 2px; font-size: 12px; color: var(--muted); }
@@ -161,6 +172,7 @@ h1, h2 { margin: 0; }
 .settings-head { display: flex; align-items: center; justify-content: space-between; }
 .settings h2 { font-size: 17px; }
 .settings h3 { font-size: 14px; margin: 16px 0 8px; }
+.settings-foot { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); }
 .bike-list { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 4px; }
 .inline-form { display: flex; gap: 6px; flex-wrap: wrap; }
 .inline-form input { flex: 1 1 140px; }
@@ -168,11 +180,40 @@ h1, h2 { margin: 0; }
 .key-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .key-new input { font-family: ui-monospace, monospace; font-size: 12px; }
 
-/* phone */
+/* phone: the page never scrolls; the map takes what the header, stats and profile leave, the ride
+   list is a drawer over a dimmed page, and only the stats panel scrolls when it is expanded */
 @media (max-width: 760px) {
-  .app { height: auto; min-height: 100dvh; grid-template-columns: 1fr; grid-template-rows: auto auto auto; grid-template-areas: "top" "main" "side"; }
-  .topbar { flex-wrap: wrap; padding: 8px 16px; }
-  .sidebar { border-right: 0; border-top: 1px solid var(--border); }
-  .main { grid-template-rows: auto 60vh 170px; }
-  .legend { width: 170px; bottom: 32px; }
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); grid-template-areas: "top" "main"; }
+  .topbar { padding: 6px 10px; gap: 6px; }
+  .drawer-toggle { display: inline-flex; }
+  .upload-btn .btn-text { display: none; }
+  .upload-btn { width: 34px; padding: 0; justify-content: center; }
+
+  .sidebar {
+    position: fixed; top: 0; bottom: 0; left: 0; z-index: 30; width: min(320px, 86vw);
+    border-right: 1px solid var(--border); box-shadow: var(--shadow);
+    transform: translateX(-102%); transition: transform 0.2s ease; visibility: hidden;
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+  .drawer-open .sidebar { transform: none; visibility: visible; }
+  .drawer-backdrop { position: fixed; inset: 0; z-index: 29; background: rgba(0, 0, 0, 0.45); }
+  .drawer-open { overflow: hidden; }
+
+  .main { grid-template-rows: auto minmax(180px, 1fr) 150px; }
+  .stats { padding: 8px 12px; max-height: 48dvh; overflow-y: auto; }
+  .ride-title { font-size: 15px; }
+  .ride-head { margin-bottom: 4px; }
+  .stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 10px; }
+  .stat { align-content: end; } /* a two-line label must not push its value below the others */
+  .stat.primary .stat-value { white-space: nowrap; }
+  .stat.wide { grid-column: 1 / -1; }
+  .stat-label { font-size: 10px; letter-spacing: 0.02em; }
+  .stat.primary .stat-value { font-size: 17px; }
+  .stat-value { font-size: 14px; }
+  .compare-row select { width: 100%; }
+  .legend { width: 150px; bottom: 30px; padding: 4px 8px 16px; font-size: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar { transition: none; }
 }

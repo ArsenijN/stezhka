@@ -37,6 +37,18 @@ Answers you may see in a failure notification: `invalid_gpx` (not a usable track
 Open GPX Tracker → the saved track → **Share** → **Send to Stezhka**. If the Shortcut is not in the
 first row, scroll the share sheet to *Edit Actions* and add it to favourites.
 
+## Back it up or share it
+
+Build it once by hand: iOS imports only Shortcut files that Apple has signed, so a ready-made file
+cannot be shipped with Stezhka. A Shortcut you export yourself (**Share → Export File**, or
+**Copy iCloud Link**) is signed and imports fine on a new phone.
+
+- **The upload key is inside the exported file.** Keep it like a password; if it leaks, revoke the key
+  in Settings and put a new one into the Shortcut.
+- **For someone else's Stezhka**, never send yours with the key in it: under the Shortcut's details →
+  **Set Up Import Questions**, add questions for the URL and the `Authorization` header. Whoever adds
+  it is then asked for their own site and key, and yours is not exported.
+
 ## Test from a computer
 
 ```sh

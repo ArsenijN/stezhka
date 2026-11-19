@@ -70,7 +70,10 @@
     "temperature": "Temperature",
     "wind": "Wind",
     "road": "Road",
-    "elevation_source_dem": "Elevation from the Copernicus terrain model. It measures the surface, so in forests and between buildings it can read treetop or roof height."
+    "elevation_source_dem": "Elevation from the Copernicus terrain model. It measures the surface, so in forests and between buildings it can read treetop or roof height.",
+    "more": "Show all details",
+    "less": "Show only the essentials",
+    "elevation_info": "Where the elevation comes from"
   },
   "chart": {
     "elevation": "Elevation",
