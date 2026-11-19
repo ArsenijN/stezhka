@@ -16,7 +16,11 @@ Versions follow SemVer `0.y.z`: each milestone below bumps `y`.
 - **v0.4** Managing rides: bikes (settings dialog, per-ride bike, list filter), edit name/notes,
   delete with tombstone (the inbox never re-imports a deleted ride; an explicit upload restores it),
   change password in the UI, compare overlay of a second ride (nearest in time listed first),
+  click the profile to pin a point and centre the map on it,
   source-code link for every user (AGPL §13, `STEZHKA_SOURCE_URL`), CI running the tests on GitHub.
+
+- **v0.4.1** Upload keys + iOS share-sheet Shortcut, Syncthing inbox setup, nightly backup and
+  monthly map refresh timers.
 
 ## Next: v0.5 - roads and segments
 
@@ -73,8 +77,7 @@ actually ride, not from road class defaults:
   reported 2-3 m typical, 8 m worst on our rides).
 - Getting rides onto the server: [docs/syncthing.md](docs/syncthing.md) (Android: Syncthing-Fork;
   iPhone: browser upload or Synctrain/Möbius Sync).
-- **Device upload tokens + iOS Shortcut**: a per-device token that may only upload, so "Share →
-  Send to Stezhka" works in one tap on the iPhone.
+- iPhone in one tap: upload keys (Settings) + share-sheet Shortcut, [docs/ios-shortcut.md](docs/ios-shortcut.md).
 - Own Android app only for what recorders cannot do: one-tap annotations (puddle, bad surface,
   "on sidewalk"), live ETA, and **Health Connect** heart rate and steps (Galaxy Fit3 via Samsung
   Health), merged into the ride by timestamp: effort on the profile (e.g. the climb to uni), steps
@@ -86,9 +89,9 @@ actually ride, not from road class defaults:
 
 - Syncthing inbox: `deploy/setup-inbox.sh` + [docs/syncthing.md](docs/syncthing.md); the watcher
   ignores Syncthing's own `.stfolder` / `.stversions`.
-- Nightly backup to the SMB cold storage: `stezhka-admin backup` snapshot + `rsync` of `raw/`
-  (systemd timer).
-- Monthly basemap refresh (`stezhka-admin basemap`), systemd timer.
+- Nightly backup to cold storage: `stezhka-backup.timer`, see [docs/backup.md](docs/backup.md)
+  (needs `STEZHKA_BACKUP_DIR` + the SMB mount).
+- Monthly basemap refresh: `stezhka-basemap.timer`.
 - Translations through Weblate once the repository is public.
 - F-Droid packaging once there is an Android app.
 

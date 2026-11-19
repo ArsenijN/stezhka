@@ -89,6 +89,9 @@ sudo stezhka-admin set-password
 sudo stezhka-admin basemap        # ~230 MB map download, ~20 s
 ```
 
+Getting rides in automatically: [docs/syncthing.md](docs/syncthing.md) (Android) and
+[docs/ios-shortcut.md](docs/ios-shortcut.md) (iPhone). Backups: [docs/backup.md](docs/backup.md).
+
 Stezhka binds to `127.0.0.1:8470` behind your HTTPS reverse proxy (subdomain or path prefix both
 work; the UI uses relative URLs). Back up with `sudo stezhka-admin backup <file>` plus a copy of
 `/srv/stezhka/data/raw/` (the basemap and DEM tiles can always be re-downloaded).

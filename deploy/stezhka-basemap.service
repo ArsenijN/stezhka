@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh Stezhka's self-hosted basemap (OpenFreeMap extract)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/stezhka-admin basemap
+Nice=10

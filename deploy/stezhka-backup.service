@@ -1,0 +1,10 @@
+[Unit]
+Description=Stezhka backup to cold storage
+After=network-online.target remote-fs.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/stezhka-backup
+Nice=10
+IOSchedulingClass=idle

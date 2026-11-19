@@ -50,6 +50,7 @@ else
     echo "   keeping existing $ENV_FILE"
 fi
 install -m 755 "$APP/deploy/stezhka-admin" /usr/local/sbin/stezhka-admin
+install -m 755 "$APP/deploy/backup.sh" /usr/local/sbin/stezhka-backup
 
 echo "== systemd"
 if ! cmp -s "$APP/deploy/stezhka.service" "$UNIT"; then
@@ -57,6 +58,12 @@ if ! cmp -s "$APP/deploy/stezhka.service" "$UNIT"; then
     systemctl daemon-reload
 fi
 systemctl enable --quiet stezhka
+for unit in stezhka-backup.service stezhka-backup.timer stezhka-basemap.service stezhka-basemap.timer; do
+    install -m 644 "$APP/deploy/$unit" "/etc/systemd/system/$unit"
+done
+systemctl daemon-reload
+# nightly backup (does nothing until STEZHKA_BACKUP_DIR is set) and monthly map refresh
+systemctl enable --quiet --now stezhka-backup.timer stezhka-basemap.timer
 systemctl restart stezhka
 
 echo "== health check"
