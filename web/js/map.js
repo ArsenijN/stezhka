@@ -87,6 +87,8 @@ export class RideMap {
     this.cursor = EMPTY;
     this.compare = EMPTY;
     this.marks = EMPTY;
+    this.roads = EMPTY;
+    this.roadClickHandlers = new Set();
     this.points = null;
     this.hoverHandlers = new Set();
     this.selectHandlers = new Set();
@@ -150,6 +152,18 @@ export class RideMap {
     m.addSource('cursor', { type: 'geojson', data: this.cursor });
     m.addSource('compare', { type: 'geojson', data: this.compare });
     m.addSource('marks', { type: 'geojson', data: this.marks, tolerance: 0 });
+    m.addSource('roads', { type: 'geojson', data: this.roads, tolerance: 0 });
+    // "My roads": every ridden segment, coloured by typical speed, thicker when ridden more often
+    const ridden = ['min', ['get', 'rides'], 8];
+    m.addLayer({
+      id: 'roads', type: 'line', source: 'roads',
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: {
+        'line-color': ['case', ['==', ['get', 'kmh'], null], '#9ca3af', speedColorExpr()],
+        'line-width': ['interpolate', ['linear'], ['zoom'], 12, ['+', 1.5, ['*', 0.3, ridden]], 17, ['+', 4, ['*', 0.8, ridden]]],
+        'line-opacity': 0.85,
+      },
+    });
     const markColor = ['match', ['get', 'kind'], 'bad', MARK_COLORS.bad, 'good', MARK_COLORS.good, 'draft', MARK_COLORS.draft, MARK_COLORS.note];
     // marked stretches: a wide halo under the track
     m.addLayer({
@@ -232,6 +246,14 @@ export class RideMap {
       new maplibregl.Popup({ closeButton: false }).setLngLat(e.lngLat).setDOMContent(box).addTo(m);
     });
     m.on('mouseenter', 'stops', () => { m.getCanvas().style.cursor = 'pointer'; });
+    m.on('click', 'roads', (e) => {
+      // a mark or a stop under the finger has its own popup: one popup per tap
+      if (m.queryRenderedFeatures(e.point, { layers: ['marks-line', 'marks-spot', 'stops'] }).length) return;
+      const p = e.features?.[0]?.properties;
+      if (p) for (const fn of this.roadClickHandlers) fn(p.id, e.lngLat);
+    });
+    m.on('mouseenter', 'roads', () => { m.getCanvas().style.cursor = 'pointer'; });
+    m.on('mouseleave', 'roads', () => { m.getCanvas().style.cursor = ''; });
     for (const layer of ['marks-line', 'marks-spot']) {
       m.on('click', layer, (e) => {
         const p = e.features?.[0]?.properties;
@@ -300,6 +322,24 @@ export class RideMap {
       type: 'FeatureCollection',
       features: [{ type: 'Feature', properties: {}, geometry: { type: 'MultiLineString', coordinates: lines } }],
     });
+  }
+
+  /** Ridden segments from /api/roads, or null to hide the layer. */
+  showRoads(segments) {
+    this._setData('roads', !segments ? EMPTY : {
+      type: 'FeatureCollection',
+      features: segments.map((s) => ({
+        type: 'Feature',
+        properties: { id: s.id, rides: s.rides, kmh: s.speed_mps == null ? null : fmt.kmh(s.speed_mps) },
+        geometry: { type: 'LineString', coordinates: s.geom },
+      })),
+    });
+  }
+
+  onRoadClick(fn) { this.roadClickHandlers.add(fn); }
+
+  popup(lngLat, node) {
+    new maplibregl.Popup({ closeButton: false, maxWidth: '260px' }).setLngLat(lngLat).setDOMContent(node).addTo(this.map);
   }
 
   /** Marks: [{i0, i1, kind, tags, note}] by track point index; a spot has i0 === i1. */

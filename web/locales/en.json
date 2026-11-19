@@ -217,5 +217,34 @@
     "spot": "At {{at}}",
     "range": "{{from}} – {{to}}",
     "deleted": "Mark deleted."
+  },
+  "roads": {
+    "toggle": "My roads",
+    "no_basemap": "The road network needs the self-hosted map: on the server run stezhka basemap.",
+    "pending": "Rides are being matched to the roads; try again in a minute.",
+    "none": "No ridden roads yet.",
+    "rides_one": "Ridden {{count}} time",
+    "rides_other": "Ridden {{count}} times",
+    "typical": "Typically {{speed}}",
+    "best": "Best {{speed}}",
+    "no_speed": "Only partly ridden: no speed yet",
+    "last": "Last: {{when}}",
+    "paved": "paved",
+    "unpaved": "unpaved"
+  },
+  "road_class": {
+    "motorway": "Motorway",
+    "trunk": "Main road",
+    "primary": "Primary road",
+    "secondary": "Secondary road",
+    "tertiary": "Local road",
+    "minor": "Street",
+    "service": "Service road, yard",
+    "track": "Track",
+    "path": "Path",
+    "footway": "Footway, sidewalk",
+    "cycleway": "Cycleway",
+    "pedestrian": "Pedestrian street",
+    "other": "Road"
   }
 }

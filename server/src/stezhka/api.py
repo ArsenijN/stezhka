@@ -29,7 +29,7 @@ from .db import connect
 from .gpx import GpxError
 from .dem import ATTRIBUTION as DEM_ATTRIBUTION
 from .enrich import EnrichWorker
-from . import feelings, recordings
+from . import feelings, recordings, segments
 from .ingest import (
     MAX_FILE_BYTES, TRASH_DAYS, InboxWatcher, TrashPurger, delete_ride, import_bytes, restore_ride, trash_ride,
 )
@@ -180,9 +180,12 @@ def create_app(cfg: Config) -> FastAPI:
 
     worker = EnrichWorker(open_db, cfg.dem_dir) if cfg.enrich else None
 
+    matcher = segments.MatchWorker(open_db, cfg.basemap_dir)
+
     def imported() -> None:
         if worker:
             worker.wake()
+        matcher.wake()
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -197,6 +200,7 @@ def create_app(cfg: Config) -> FastAPI:
             conn.close()
         purger = TrashPurger(open_db, cfg.raw_dir)
         purger.start()
+        matcher.start()
         watcher = None
         if worker:
             worker.start()
@@ -210,6 +214,7 @@ def create_app(cfg: Config) -> FastAPI:
         if worker:
             worker.stop()
         purger.stop()
+        matcher.stop()
 
     app = FastAPI(title="Stezhka", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None)
     app.add_middleware(_SelectiveGZip)
@@ -542,6 +547,19 @@ def create_app(cfg: Config) -> FastAPI:
         return {"ok": True}
 
     # --- recordings of one trip ----------------------------------------------------------------
+
+    # --- roads: ridden segments with how often and how fast ----------------------------------------
+
+    @app.get("/api/roads")
+    def roads(conn: sqlite3.Connection = Depends(require_auth)):
+        pending = conn.execute(
+            "SELECT COUNT(*) FROM rides WHERE match_version < ? AND trashed_at IS NULL", (segments.MATCH_VERSION,)
+        ).fetchone()[0]
+        return {
+            "segments": segments.road_stats(conn),
+            "pending": pending,
+            "available": segments.basemap_file(cfg.basemap_dir).is_file(),
+        }
 
     @app.get("/api/recorders")
     def list_recorders(conn: sqlite3.Connection = Depends(require_auth)):

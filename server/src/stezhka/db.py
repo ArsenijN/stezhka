@@ -187,6 +187,34 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE rides ADD COLUMN main_chosen INTEGER NOT NULL DEFAULT 0;
     """,
+    # 9: map matching (segments.py): ridden road segments and every pass over them
+    """
+    CREATE TABLE road_segments (
+        id       TEXT PRIMARY KEY,  -- roads.segment_id(): class + geometry hash
+        class    TEXT,
+        subclass TEXT,
+        surface  TEXT,
+        brunnel  TEXT,
+        name     TEXT,
+        name_en  TEXT,
+        length_m REAL NOT NULL,
+        geom     TEXT NOT NULL      -- JSON [[lon, lat], ...]
+    ) WITHOUT ROWID;
+    CREATE TABLE ride_segments (
+        ride_id    INTEGER NOT NULL REFERENCES rides(id) ON DELETE CASCADE,
+        seq        INTEGER NOT NULL,
+        segment_id TEXT NOT NULL,
+        enter_t    REAL NOT NULL,
+        exit_t     REAL NOT NULL,
+        from_off   REAL NOT NULL,  -- metres from the segment's first end
+        to_off     REAL NOT NULL,
+        dist_m     REAL NOT NULL,
+        PRIMARY KEY (ride_id, seq)
+    ) WITHOUT ROWID;
+    CREATE INDEX ride_segments_segment ON ride_segments(segment_id);
+    ALTER TABLE rides ADD COLUMN match_version INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE rides ADD COLUMN match_error TEXT;
+    """,
 ]
 
 

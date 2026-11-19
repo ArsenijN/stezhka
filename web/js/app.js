@@ -25,7 +25,55 @@ const state = {
   feelingOpen: false, // reason chips shown in the compact view right after picking a feeling
   markMode: false, // waiting for a drag/tap on the profile
   draft: null, // mark being created or edited: {id|null, start_t, end_t, tags, note}
+  roads: null, // ridden segments (/api/roads) while "My roads" is on
 };
+
+// --- "My roads": ridden segments with typical speed -----------------------------------------------
+
+function roadLabel(s) {
+  const name = locale() === 'uk' ? s.name : (s.name_en || s.name);
+  if (name) return name;
+  const kind = s.subclass && ROAD_KINDS.includes(s.subclass) ? s.subclass : s.class;
+  return ROAD_KINDS.includes(kind) ? t(`road_class.${kind}`) : t('road_class.other');
+}
+
+const ROAD_KINDS = ['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'minor', 'service', 'track', 'path',
+  'footway', 'cycleway', 'pedestrian'];
+
+async function setRoads(on) {
+  const btn = $('roads-toggle');
+  btn.setAttribute('aria-pressed', String(on));
+  try { localStorage.setItem('stezhka.roads', on ? '1' : '0'); } catch { /* not essential */ }
+  if (!on) {
+    state.roads = null;
+    state.map.showRoads(null);
+    return;
+  }
+  let res;
+  try {
+    res = await api('roads');
+  } catch (ex) {
+    toast(errorText(ex), 'error');
+    return;
+  }
+  if (!res.available) toast(t('roads.no_basemap'));
+  else if (!res.segments.length) toast(res.pending ? t('roads.pending') : t('roads.none'));
+  state.roads = new Map(res.segments.map((s) => [s.id, s]));
+  state.map.showRoads(res.segments);
+}
+
+function roadPopup(id, lngLat) {
+  const s = state.roads?.get(id);
+  if (!s) return;
+  const line = (text) => el('div', {}, text);
+  state.map.popup(lngLat, el('div', { class: 'road-popup' },
+    el('strong', {}, roadLabel(s)),
+    line(t('roads.rides', { count: s.rides })),
+    s.speed_mps != null ? line(t('roads.typical', { speed: fmt.speed(s.speed_mps) })) : line(t('roads.no_speed')),
+    s.best_mps != null && s.passes > 1 ? line(t('roads.best', { speed: fmt.speed(s.best_mps) })) : null,
+    line(t('roads.last', { when: fmt.date(s.last_t) })),
+    el('div', { class: 'muted' }, fmt.distance(s.length_m), s.surface ? ` · ${s.surface === 'unpaved' ? t('roads.unpaved') : t('roads.paved')}` : '')));
+}
 
 const FEELING_EMOJI = { 1: '👍', 0: '😐', '-1': '👎' };
 
@@ -711,6 +759,9 @@ async function startApp() {
     state.chart.onSelect((i) => { state.map.setPinned(i); state.map.panToPoint(i); });
     // tapping the track pins that point too; the map is already looking at it, so no pan
     state.map.onSelect((i) => { state.map.setPinned(i); state.chart.setPinned(i); });
+    state.map.onRoadClick(roadPopup);
+    $('roads-toggle').addEventListener('click', () => setRoads($('roads-toggle').getAttribute('aria-pressed') !== 'true'));
+    try { if (localStorage.getItem('stezhka.roads') === '1') setRoads(true); } catch { /* storage blocked */ }
     renderLegend();
     window.addEventListener('hashchange', () => { setDrawer(false); selectRide(rideIdFromHash()); });
     $('drawer-open').addEventListener('click', () => setDrawer(true));

@@ -162,8 +162,14 @@ h1, h2 { margin: 0; }
 .legend-bar { height: 8px; border-radius: 4px; }
 .legend-ticks { position: relative; height: 12px; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .legend-ticks span { position: absolute; transform: translateX(-50%); }
+.map-toggle {
+  position: absolute; top: 10px; left: 10px; z-index: 2; height: 30px; padding: 0 10px; font: inherit; font-size: 13px;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); cursor: pointer;
+}
+.map-toggle[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.road-popup { display: grid; gap: 2px; font-size: 13px; }
 .map-note {
-  position: absolute; top: 10px; left: 10px; right: 60px; margin: 0; max-width: 420px; padding: 8px 12px;
+  position: absolute; top: 48px; left: 10px; right: 60px; margin: 0; max-width: 420px; padding: 8px 12px;
   background: var(--surface); color: var(--muted); border: 1px solid var(--border); border-radius: 8px; font-size: 12px;
 }
 .maplibregl-popup-content { background: var(--surface); color: var(--text); border-radius: 8px; }

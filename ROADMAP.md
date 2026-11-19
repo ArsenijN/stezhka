@@ -40,16 +40,19 @@ Versions follow SemVer `0.y.z`: each milestone below bumps `y`.
   several rides in a row becomes common, move it to a chip on the map (pick, look, pick the next,
   without opening and closing the stats each time).
 
-## Next: v0.5 - roads and segments
+## v0.5 - roads and segments
 
-- OSM extract for the region (Geofabrik Ukraine → `osmium extract` by bbox) → own road graph with
-  stable segment ids, **including** paths/tracks/footways unless `bicycle=no`; keep `surface`,
-  `tracktype`, `smoothness`, `mtb:scale`, `incline`.
-- HMM map matching of every ride to the graph (sidewalk vs road ambiguity: speed consistency +
-  manual correction later).
-- Per-segment statistics: median speed, spread, sample count, stop frequency; split by weather
-  wetness, time of day, bike.
-- Map layers: *typical speed* per segment, *explored* (ridden) vs *unexplored* roads.
+Done in **v0.5.0**: road network from the basemap tiles (D11), HMM map matching of every ride in
+the background (`stezhka match` by hand), ridden segments with passes, typical (median) and best
+speed; *My roads* map layer (colour = typical speed, width = how often).
+
+Next:
+- Per-ride view of its segments: where this ride was slower/faster than usual.
+- Road vs sidewalk next to it: GPS cannot tell them apart (5-15 m). Options: treat a footway
+  alongside a street as part of it for statistics, or ask the user once per street.
+- Marks (v0.4.4) attached to the matched segments, shown on *My roads*.
+- Statistics split by wetness, time of day, bike; spread and sample count in the popup.
+- Junction costs: time lost at each junction / crossing (stops already detected).
 - Stop reasons from OSM within ~20 m: traffic signals, crossings, junctions; otherwise "unknown".
 - Elevation across `bridge=*` / `tunnel=*` ways interpolated instead of the DEM's river dip.
 

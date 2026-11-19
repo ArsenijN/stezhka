@@ -60,6 +60,23 @@ def _cmd_enrich(cfg: Config, args) -> int:
     return _enrich(cfg, conn)
 
 
+def _cmd_match(cfg: Config, args) -> int:
+    from .segments import basemap_file, match_pending
+
+    if not basemap_file(cfg.basemap_dir).is_file():
+        print("no local basemap: run `stezhka basemap` first", file=sys.stderr)
+        return 1
+    conn = connect(cfg.db_path)
+    if args.all:
+        conn.execute("UPDATE rides SET match_version = 0")
+    n = match_pending(conn, cfg.basemap_dir)
+    print(f"matched {n} ride(s) to the road network")
+    errors = conn.execute("SELECT id, match_error FROM rides WHERE match_error IS NOT NULL").fetchall()
+    for r in errors:
+        print(f"  ride {r['id']}: {r['match_error']}", file=sys.stderr)
+    return 1 if errors else 0
+
+
 def _cmd_reprocess(cfg: Config, args) -> int:
     done, failed = reprocess(connect(cfg.db_path), cfg.raw_dir, all_rides=args.all)
     print(f"reprocessed {done} ride(s)")
@@ -128,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-enrich", action="store_true", help="skip DEM elevation and weather")
     p = sub.add_parser("enrich", help="add DEM elevation and weather to rides that lack it")
     p.add_argument("--all", action="store_true", help="redo every ride")
+    p = sub.add_parser("match", help="match rides to the road network (the server does this by itself)")
+    p.add_argument("--all", action="store_true", help="redo every ride")
     p = sub.add_parser("reprocess", help="rebuild derived data from raw files")
     p.add_argument("--all", action="store_true", help="all rides, not only outdated ones")
     sub.add_parser("set-password", help="set the login password")
@@ -155,6 +174,7 @@ def main(argv: list[str] | None = None) -> int:
         "backup": _cmd_backup,
         "basemap": _cmd_basemap,
         "enrich": _cmd_enrich,
+        "match": _cmd_match,
     }[args.cmd]
     return handler(cfg, args)
 

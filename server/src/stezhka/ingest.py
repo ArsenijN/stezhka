@@ -63,6 +63,7 @@ def _ride_values(track: ParsedTrack, pr: ProcessedRide) -> dict:
         "ele_source": "gps",
         "dem_version": 0,
         "weather_version": 0,
+        "match_version": 0,
         "enrich_error": None,
     }
 

@@ -104,5 +104,24 @@ inbox) enriches pending rides; the CLI does it inline after `import`. Each enric
 `enrich_error` and retried after an hour; reprocessing a ride resets its enrichment.
 `STEZHKA_ENRICH=0` turns all of this (and every outbound request it makes) off.
 
+## D11. Road network from the basemap tiles, built on demand
+The planned Geofabrik/osmium extract was replaced by the self-hosted basemap's z14 vector tiles
+(OpenMapTiles `transportation` layer): no second download (Ukraine's extract is > 1 GB), no new
+external service, offline, refreshed with the map. The tiles keep every road and path at full
+detail with class, subclass (footway, cycleway…), paved/unpaved, bridge/tunnel and names
+(`transportation_name`). Missing: OSM ids and detailed tags (`smoothness`, `tracktype`,
+`mtb:scale`, `incline`, `bicycle=*`); if routing needs them, a per-area Overpass fetch can add them
+to the stored segments later.
+Graph: lines clipped to each tile's own square (neighbours meet on the border, where nodes are
+merged), split into segments at shared vertices and line ends. Measured: 27 % of street ends lie on
+the other street's line without a shared vertex (tile simplification), so ends are snapped onto
+lines within ~1.5 m. Result around Uzhhorod: 98 % of nodes in one connected network. Segment id =
+hash of class + geometry: stable while the map does not change there; a basemap refresh re-matches
+every ride.
+Matching: HMM after Newson & Krumm (σ 10 m, β 10 m, candidates within 35 m, a fix every ~8 m),
+routes between candidates by bounded Dijkstra; the full route is reconstructed, so short segments
+between fixes count too. On the two-phone pairs, 71-85 % of the matched length is on identical
+segments; the rest is road vs the sidewalk next to it (5-15 m apart, GPS cannot tell).
+
 ## Roadmap
 Moved to [ROADMAP.md](../ROADMAP.md).
