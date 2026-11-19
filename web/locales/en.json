@@ -152,7 +152,9 @@
   "compare": {
     "label": "Compare with",
     "none": "nothing",
-    "summary": "{{distance}} · {{time}} · {{speed}}"
+    "summary": "{{distance}} · {{time}} · {{speed}}",
+    "recordings": "Other recordings of this ride",
+    "rides": "Other rides"
   },
   "bike_kind": {
     "mtb": "Mountain",
@@ -164,5 +166,23 @@
   },
   "app": {
     "source_code": "Source code (AGPL-3.0)"
+  },
+  "totals": {
+    "week": "This week",
+    "month": "This month",
+    "all": "All",
+    "rides_one": "{{count}} ride",
+    "rides_other": "{{count}} rides",
+    "last_days_one": "Last {{count}} day",
+    "last_days_other": "Last {{count}} days"
+  },
+  "recordings": {
+    "also": "Also recorded by",
+    "compare": "Compare",
+    "make_main": "Make main",
+    "make_main_help": "Use this recording's stats for the ride",
+    "split": "Split off",
+    "split_help": "Not the same trip: show it as a separate ride",
+    "split_done": "Split off: it is a separate ride now."
   }
 }

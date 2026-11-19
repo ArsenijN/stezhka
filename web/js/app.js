@@ -101,7 +101,64 @@ function renderBikeFilter() {
   sel.hidden = state.bikes.length === 0;
 }
 
+// --- totals -------------------------------------------------------------------------------------
+
+const DAY = 86400;
+const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+function sumRides(rides) {
+  return {
+    count: rides.length,
+    distance: rides.reduce((a, r) => a + r.distance_m, 0),
+    moving: rides.reduce((a, r) => a + r.moving_s, 0),
+  };
+}
+
+function totalCell(label, s) {
+  return el('div', { class: 'total' },
+    el('span', { class: 'stat-label' }, label),
+    el('span', { class: 'total-km' }, fmt.distance(s.distance)),
+    el('span', { class: 'muted' }, fmt.duration(s.moving), ' · ', t('totals.rides', { count: s.count })));
+}
+
+// Linked recordings of one trip are one ride here: the list holds main rides only.
+function renderTotals() {
+  const rides = visibleRides();
+  const box = $('totals');
+  box.hidden = rides.length === 0;
+  if (!rides.length) return;
+  const today = startOfDay(new Date());
+  const week = new Date(today); week.setDate(today.getDate() - ((today.getDay() + 6) % 7)); // Monday
+  const month = new Date(today.getFullYear(), today.getMonth(), 1);
+  const since = (d) => rides.filter((r) => r.started_at >= d.getTime() / 1000);
+
+  const days = 14;
+  const first = new Date(today); first.setDate(today.getDate() - (days - 1));
+  const perDay = Array.from({ length: days }, () => 0);
+  for (const r of since(first)) {
+    const i = Math.round((startOfDay(new Date(r.started_at * 1000)) - first) / (DAY * 1000));
+    if (i >= 0 && i < days) perDay[i] += r.distance_m;
+  }
+  const max = Math.max(...perDay, 1);
+  const bars = el('div', { class: 'day-bars', role: 'img', 'aria-label': t('totals.last_days', { count: days }) },
+    ...perDay.map((m, i) => {
+      const d = new Date(first); d.setDate(first.getDate() + i);
+      const bar = el('span', { class: m ? 'bar' : 'bar empty', title: `${fmt.date(d.getTime() / 1000)}: ${fmt.distance(m)}` });
+      bar.style.height = `${m ? Math.max(8, (m / max) * 100) : 4}%`;
+      if (d.getDay() === 1) bar.classList.add('monday');
+      return bar;
+    }));
+  box.replaceChildren(
+    el('div', { class: 'totals-row' },
+      totalCell(t('totals.week'), sumRides(since(week))),
+      totalCell(t('totals.month'), sumRides(since(month))),
+      totalCell(t('totals.all'), sumRides(rides))),
+    el('div', { class: 'day-bars-label muted' }, t('totals.last_days', { count: days })),
+    bars);
+}
+
 function renderRideList() {
+  renderTotals();
   const list = $('ride-list');
   list.replaceChildren();
   const rides = visibleRides();
@@ -116,7 +173,8 @@ function renderRideList() {
         el('span', { class: 'ride-name' }, rideTitle(r)),
         el('span', { class: 'ride-meta' }, meta),
         r.bike_name ? el('span', { class: 'ride-bike' }, r.bike_name) : null,
-        r.creator ? el('span', { class: 'ride-source' }, r.creator) : null, // recording app name, as in the file
+        // recording app(s), as named in the files; a trip recorded by two phones lists both
+        r.creator ? el('span', { class: 'ride-source' }, r.other_creators ? `${r.creator} + ${r.other_creators}` : r.creator) : null,
       )));
   }
 }
@@ -228,17 +286,68 @@ function compareRow(r) {
   // Other rides, the ones closest in time first (a second phone on the same trip sorts to the top).
   const others = state.rides.filter((o) => o.id !== r.id)
     .sort((a, b) => Math.abs(a.started_at - r.started_at) - Math.abs(b.started_at - r.started_at));
+  const option = (o) => el('option', { value: String(o.id) },
+    `${fmt.rideDate(o.started_at)} · ${fmt.distance(o.distance_m)}${o.creator ? ` · ${o.creator}` : ''}`);
   const sel = el('select', { id: 'compare', onchange: (e) => setCompare(e.target.value ? Number(e.target.value) : null) },
     el('option', { value: '' }, t('compare.none')),
-    ...others.map((o) => el('option', { value: String(o.id) },
-      `${fmt.rideDate(o.started_at)} · ${fmt.distance(o.distance_m)}${o.creator ? ` · ${o.creator}` : ''}`)));
+    r.recordings.length ? el('optgroup', { label: t('compare.recordings') }, ...r.recordings.map(option)) : null,
+    el('optgroup', { label: t('compare.rides') }, ...others.map(option)));
   sel.value = state.compareId ? String(state.compareId) : '';
-  const other = state.rides.find((o) => o.id === state.compareId);
+  const other = findRide(state.compareId);
   return el('div', { class: 'compare-row' },
     el('label', {}, el('span', { class: 'compare-swatch', 'aria-hidden': 'true' }), t('compare.label'), ' ', sel),
     other ? el('span', { class: 'muted' }, t('compare.summary', {
       distance: fmt.distance(other.distance_m), time: fmt.duration(other.moving_s), speed: fmt.speed(other.avg_moving_mps),
     })) : null);
+}
+
+function findRide(id) {
+  return state.rides.find((o) => o.id === id) ?? state.ride?.recordings.find((o) => o.id === id);
+}
+
+// The trip's other recordings (a second phone): compare in one tap; pick which one is main, or
+// split one off when it was not the same trip after all.
+function recordingsRow(r) {
+  if (!r.recordings.length) return null;
+  return el('div', { class: 'recordings' }, ...r.recordings.map((o) => {
+    const on = state.compareId === o.id;
+    const toggle = el('button', { type: 'button', class: `btn small${on ? ' active' : ''}`, 'aria-pressed': String(on),
+      onclick: () => setCompare(on ? null : o.id) }, el('span', { class: 'compare-swatch', 'aria-hidden': 'true' }), t('recordings.compare'));
+    return el('div', { class: 'recording' },
+      el('span', {}, el('span', { class: 'muted' }, t('recordings.also'), ' '), el('strong', {}, o.creator || '?'),
+        el('span', { class: 'muted' }, ' · ', fmt.distance(o.distance_m), ' · ', fmt.speed(o.avg_moving_mps))),
+      el('span', { class: 'row-actions' },
+        toggle,
+        state.details ? el('button', { type: 'button', class: 'btn small', title: t('recordings.make_main_help'),
+          onclick: () => makeMain(o.id) }, t('recordings.make_main')) : null,
+        state.details ? el('button', { type: 'button', class: 'btn small', title: t('recordings.split_help'),
+          onclick: () => splitRecording(o.id) }, t('recordings.split')) : null));
+  }));
+}
+
+async function makeMain(id) {
+  try {
+    await api(`rides/${id}/main`, { method: 'POST' });
+  } catch (ex) {
+    toast(errorText(ex), 'error');
+    return;
+  }
+  const old = state.ride.id;
+  state.compareId = state.compareId === id ? old : state.compareId;
+  await loadRides();
+  location.hash = `ride=${id}`;
+}
+
+async function splitRecording(id) {
+  try {
+    await api(`rides/${id}/split`, { method: 'POST' });
+  } catch (ex) {
+    toast(errorText(ex), 'error');
+    return;
+  }
+  toast(t('recordings.split_done'));
+  await loadRides();
+  await selectRide(state.ride.id);
 }
 
 async function setCompare(id) {
@@ -280,6 +389,7 @@ function renderStats() {
     state.editing ? editForm(r) : titleRow(r),
     full && !state.editing && r.notes ? el('p', { class: 'ride-notes' }, r.notes) : null,
     grid,
+    recordingsRow(r),
     full && state.eleInfo
       ? el('p', { class: 'note' }, r.ele_source === 'dem' ? t('stats.elevation_source_dem') : t('stats.elevation_source_gps'))
       : null,

@@ -160,7 +160,9 @@
   "compare": {
     "label": "Порівняти з",
     "none": "нічим",
-    "summary": "{{distance}} · {{time}} · {{speed}}"
+    "summary": "{{distance}} · {{time}} · {{speed}}",
+    "recordings": "Інші записи цієї поїздки",
+    "rides": "Інші поїздки"
   },
   "bike_kind": {
     "mtb": "Гірський",
@@ -172,5 +174,27 @@
   },
   "app": {
     "source_code": "Вихідний код (AGPL-3.0)"
+  },
+  "totals": {
+    "week": "Цей тиждень",
+    "month": "Цей місяць",
+    "all": "Усього",
+    "rides_one": "{{count}} поїздка",
+    "rides_few": "{{count}} поїздки",
+    "rides_many": "{{count}} поїздок",
+    "rides_other": "{{count}} поїздки",
+    "last_days_one": "Останній {{count}} день",
+    "last_days_few": "Останні {{count}} дні",
+    "last_days_many": "Останні {{count}} днів",
+    "last_days_other": "Останні {{count}} дня"
+  },
+  "recordings": {
+    "also": "Також записав",
+    "compare": "Порівняти",
+    "make_main": "Зробити основним",
+    "make_main_help": "Брати статистику поїздки з цього запису",
+    "split": "Відокремити",
+    "split_help": "Це не та сама поїздка: показувати окремо",
+    "split_done": "Відокремлено: тепер це окрема поїздка."
   }
 }

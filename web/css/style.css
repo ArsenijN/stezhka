@@ -85,6 +85,22 @@ h1, h2 { margin: 0; }
 .sidebar-head h2 { font-size: 15px; }
 .main { grid-area: main; display: grid; grid-template-rows: auto minmax(240px, 1fr) 190px; min-width: 0; }
 
+/* totals */
+.totals { margin: 0 6px 10px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+.totals-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.total { display: grid; font-size: 11px; }
+.total-km { font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.day-bars-label { font-size: 11px; margin-top: 8px; }
+.day-bars { display: flex; align-items: flex-end; gap: 3px; height: 36px; margin-top: 4px; }
+.day-bars .bar { flex: 1; background: var(--accent); border-radius: 2px 2px 0 0; }
+.day-bars .bar.empty { background: var(--border); }
+.day-bars .bar.monday { box-shadow: -2px 0 0 var(--bg), -3px 0 0 var(--border); }
+
+/* recordings of one trip */
+.recordings { display: grid; gap: 6px; margin-top: 8px; }
+.recording { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.btn.active { border-color: #7c3aed; background: var(--surface-2); }
+
 /* ride list */
 .ride-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .ride-item { display: grid; gap: 1px; padding: 8px 10px; border-radius: 8px; color: inherit; text-decoration: none; border: 1px solid transparent; }

@@ -157,6 +157,13 @@ MIGRATIONS: list[str] = [
     ALTER TABLE rides ADD COLUMN trashed_at REAL;
     CREATE INDEX rides_trashed ON rides(trashed_at) WHERE trashed_at IS NOT NULL;
     """,
+    # 6: several recordings of one trip (two phones): the others point to the main ride (recordings.py)
+    """
+    ALTER TABLE rides ADD COLUMN primary_id INTEGER REFERENCES rides(id) ON DELETE SET NULL;
+    ALTER TABLE rides ADD COLUMN unlinked INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE rides ADD COLUMN name_edited INTEGER NOT NULL DEFAULT 0; -- typed by the user, not from the GPX
+    CREATE INDEX rides_primary ON rides(primary_id) WHERE primary_id IS NOT NULL;
+    """,
 ]
 
 

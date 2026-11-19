@@ -28,6 +28,7 @@ from .db import connect
 from .gpx import GpxError
 from .dem import ATTRIBUTION as DEM_ATTRIBUTION
 from .enrich import EnrichWorker
+from . import recordings
 from .ingest import (
     MAX_FILE_BYTES, TRASH_DAYS, InboxWatcher, TrashPurger, delete_ride, import_bytes, restore_ride, trash_ride,
 )
@@ -82,7 +83,9 @@ class BikeBody(BaseModel):
 _RIDE_COLUMNS = (
     "r.id, r.name, r.activity, r.started_at, r.ended_at, r.elapsed_s, r.moving_s, r.distance_m,"
     " r.avg_moving_mps, r.max_mps, r.ascent_m, r.descent_m, r.point_count, r.speed_source,"
-    " r.bike_id, b.name AS bike_name, r.notes, r.ele_source, r.enrich_error, r.creator,"
+    " r.bike_id, b.name AS bike_name, r.notes, r.ele_source, r.enrich_error, r.creator, r.primary_id,"
+    " (SELECT group_concat(o.creator, ' + ') FROM rides o WHERE o.primary_id = r.id AND o.trashed_at IS NULL)"
+    " AS other_creators,"
     " (SELECT COUNT(*) FROM stops s WHERE s.ride_id = r.id AND s.kind = 'stop') AS stop_count"
 )
 
@@ -163,7 +166,15 @@ def create_app(cfg: Config) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        open_db().close()  # create/migrate the schema before serving
+        conn = open_db()  # create/migrate the schema before serving
+        try:
+            linked = recordings.link_all(conn)  # rides imported before linking existed, or missed
+            if linked:
+                log.info("linked %d recording group(s)", linked)
+        except Exception:
+            log.exception("linking recordings failed")
+        finally:
+            conn.close()
         purger = TrashPurger(open_db, cfg.raw_dir)
         purger.start()
         watcher = None
@@ -340,7 +351,7 @@ def create_app(cfg: Config) -> FastAPI:
     def list_rides(conn: sqlite3.Connection = Depends(require_auth)):
         rows = conn.execute(
             f"SELECT {_RIDE_COLUMNS} FROM rides r LEFT JOIN bikes b ON b.id = r.bike_id"
-            " WHERE r.trashed_at IS NULL ORDER BY r.started_at DESC"
+            " WHERE r.trashed_at IS NULL AND r.primary_id IS NULL ORDER BY r.started_at DESC"
         ).fetchall()
         return {"rides": [dict(r) for r in rows]}
 
@@ -360,6 +371,13 @@ def create_app(cfg: Config) -> FastAPI:
             (ride_id,),
         ).fetchone()
         ride["weather"] = dict(w) if w else None
+        main = ride["primary_id"] or ride_id
+        rec = conn.execute(
+            "SELECT id, creator, started_at, distance_m, moving_s, avg_moving_mps, point_count, elapsed_s"
+            " FROM rides WHERE (id = ? OR primary_id = ?) AND id != ? AND trashed_at IS NULL ORDER BY id",
+            (main, main, ride_id),
+        ).fetchall()
+        ride["recordings"] = [dict(r) for r in rec]  # the trip's other recordings (other phones)
         return ride
 
     @app.get("/api/rides/{ride_id}/points")
@@ -426,7 +444,10 @@ def create_app(cfg: Config) -> FastAPI:
     def list_trash(conn: sqlite3.Connection = Depends(require_auth)):
         rows = conn.execute(
             "SELECT id, name, started_at, distance_m, creator, trashed_at, trashed_at + ? AS purge_at"
-            " FROM rides WHERE trashed_at IS NOT NULL ORDER BY trashed_at DESC",
+            " FROM rides r WHERE trashed_at IS NOT NULL"
+            # a recording trashed together with its main ride is part of that entry
+            " AND NOT EXISTS (SELECT 1 FROM rides m WHERE m.id = r.primary_id AND m.trashed_at IS NOT NULL)"
+            " ORDER BY trashed_at DESC",
             (TRASH_DAYS * 86400,),
         ).fetchall()
         return {"rides": [dict(r) for r in rows], "trash_days": TRASH_DAYS}
@@ -439,8 +460,29 @@ def create_app(cfg: Config) -> FastAPI:
 
     @app.delete("/api/trash/{ride_id}")
     def erase_from_trash(ride_id: int, conn: sqlite3.Connection = Depends(require_auth)):
-        trashed = conn.execute("SELECT 1 FROM rides WHERE id = ? AND trashed_at IS NOT NULL", (ride_id,)).fetchone()
-        if not trashed or not delete_ride(conn, cfg.raw_dir, ride_id):
+        trashed = conn.execute("SELECT trashed_at FROM rides WHERE id = ? AND trashed_at IS NOT NULL", (ride_id,)).fetchone()
+        if not trashed:
+            raise ApiError(404, ErrorCode.NOT_FOUND)
+        together = conn.execute(
+            "SELECT id FROM rides WHERE primary_id = ? AND trashed_at = ?", (ride_id, trashed["trashed_at"])
+        ).fetchall()
+        for r in together:
+            delete_ride(conn, cfg.raw_dir, r["id"])
+        delete_ride(conn, cfg.raw_dir, ride_id)
+        return {"ok": True}
+
+    # --- recordings of one trip ----------------------------------------------------------------
+
+    @app.post("/api/rides/{ride_id}/main")
+    def make_main(ride_id: int, conn: sqlite3.Connection = Depends(require_auth)):
+        _ride(conn, ride_id)
+        recordings.set_main(conn, ride_id)
+        return {"ok": True}
+
+    @app.post("/api/rides/{ride_id}/split")
+    def split_recording(ride_id: int, conn: sqlite3.Connection = Depends(require_auth)):
+        _ride(conn, ride_id)
+        if not recordings.split(conn, ride_id):
             raise ApiError(404, ErrorCode.NOT_FOUND)
         return {"ok": True}
 
@@ -451,6 +493,8 @@ def create_app(cfg: Config) -> FastAPI:
         if "bike_id" in fields and fields["bike_id"] is not None:
             if not conn.execute("SELECT 1 FROM bikes WHERE id = ?", (fields["bike_id"],)).fetchone():
                 raise ApiError(404, ErrorCode.NOT_FOUND)
+        if "name" in fields:
+            fields["name_edited"] = 1
         if fields:
             sets = ", ".join(f"{k} = :{k}" for k in fields)  # keys come from the pydantic model only
             conn.execute(f"UPDATE rides SET {sets} WHERE id = :id", {**fields, "id": ride_id})

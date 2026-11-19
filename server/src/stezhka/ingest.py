@@ -13,6 +13,7 @@ from pathlib import Path
 from .db import tx
 from .gpx import GpxError, ParsedTrack, parse_gpx
 from .process import PROCESSING_VERSION, ProcessedRide, process
+from .recordings import link_new
 
 log = logging.getLogger(__name__)
 
@@ -119,23 +120,46 @@ def import_bytes(
         ride_id = cur.lastrowid
         _write_derived(conn, ride_id, pr)
     log.info("imported ride %s from %s (%d points)", ride_id, source_name, pr.summary.point_count)
+    try:
+        link_new(conn, ride_id)  # a second phone's recording of the same trip
+    except Exception:  # linking is a convenience: never lose an import over it
+        log.exception("linking ride %s failed", ride_id)
     return ImportResult(ride_id, created=True)
 
 
 def trash_ride(conn: sqlite3.Connection, ride_id: int) -> bool:
-    """Move a ride to the trash: hidden everywhere, restorable for TRASH_DAYS. False if not found."""
-    cur = conn.execute("UPDATE rides SET trashed_at = ? WHERE id = ? AND trashed_at IS NULL", (time.time(), ride_id))
-    if cur.rowcount:
-        log.info("trashed ride %s", ride_id)
-    return cur.rowcount == 1
+    """Move a ride (with its other recordings) to the trash: hidden everywhere, restorable for
+    TRASH_DAYS. False if not found."""
+    if not conn.execute("SELECT 1 FROM rides WHERE id = ? AND trashed_at IS NULL", (ride_id,)).fetchone():
+        return False
+    with tx(conn):
+        conn.execute(
+            "UPDATE rides SET trashed_at = ? WHERE (id = ? OR primary_id = ?) AND trashed_at IS NULL",
+            (time.time(), ride_id, ride_id),
+        )
+    log.info("trashed ride %s", ride_id)
+    return True
 
 
 def restore_ride(conn: sqlite3.Connection, ride_id: int) -> bool:
-    """Take a ride out of the trash. False if it is not in the trash."""
-    cur = conn.execute("UPDATE rides SET trashed_at = NULL WHERE id = ? AND trashed_at IS NOT NULL", (ride_id,))
-    if cur.rowcount:
-        log.info("restored ride %s", ride_id)
-    return cur.rowcount == 1
+    """Take a ride out of the trash, with the recordings trashed together with it. A recording whose
+    main ride is in the trash brings that whole ride back. False if it is not in the trash."""
+    row = conn.execute("SELECT primary_id, trashed_at FROM rides WHERE id = ?", (ride_id,)).fetchone()
+    if row is None:
+        return False
+    main = row["primary_id"] or ride_id
+    when = conn.execute("SELECT trashed_at FROM rides WHERE id = ?", (main,)).fetchone()["trashed_at"]
+    if when is None:
+        if row["trashed_at"] is None:
+            return False
+        main, when = ride_id, row["trashed_at"]  # trashed on its own
+    with tx(conn):
+        conn.execute(
+            "UPDATE rides SET trashed_at = NULL WHERE id = ? OR (primary_id = ? AND trashed_at = ?) OR id = ?",
+            (main, main, when, ride_id),
+        )
+    log.info("restored ride %s", main)
+    return True
 
 
 def purge_trash(conn: sqlite3.Connection, raw_dir: Path, now: float | None = None) -> int:
