@@ -221,6 +221,7 @@ export class RideMap {
   async showRide(pts, stops) {
     await this.ready;
     this.points = pts;
+    this.pinned = null;
     this._setData('track', { type: 'FeatureCollection', features: speedRuns(pts) });
     this._setData('stops', {
       type: 'FeatureCollection',
@@ -276,12 +277,19 @@ export class RideMap {
     return best;
   }
 
+  /** Show the hovered point; with null, fall back to the pinned (clicked) point. */
   setCursor(i) {
     const d = this.points;
+    const shown = i ?? this.pinned;
     this._setData('cursor', {
       type: 'FeatureCollection',
-      features: i == null || !d ? [] : [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [d.lon[i], d.lat[i]] } }],
+      features: shown == null || !d ? [] : [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [d.lon[shown], d.lat[shown]] } }],
     });
+  }
+
+  setPinned(i) {
+    this.pinned = i;
+    this.setCursor(null);
   }
 
   resize() { this.map.resize(); }

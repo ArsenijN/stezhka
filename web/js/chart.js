@@ -21,7 +21,8 @@ export class ProfileChart {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.data = null;
-    this.cursor = null;
+    this.cursor = null; // hovered point
+    this.pinned = null; // clicked point, kept until another click or another ride
     this.hoverHandlers = new Set();
     this.selectHandlers = new Set();
     new ResizeObserver(() => this.draw()).observe(canvas);
@@ -31,7 +32,9 @@ export class ProfileChart {
     // Click (or tap) = select that point; the app pans the map to it.
     canvas.addEventListener('click', (e) => {
       const i = this._indexAt(e);
-      if (i != null) for (const fn of this.selectHandlers) fn(i);
+      if (i == null) return;
+      this.setPinned(i);
+      for (const fn of this.selectHandlers) fn(i);
     });
   }
 
@@ -42,6 +45,7 @@ export class ProfileChart {
   setData(pts) {
     this.data = pts;
     this.cursor = null;
+    this.pinned = null;
     const eles = pts.ele.filter((v) => v != null);
     this.hasEle = eles.length > 1;
     this.eleMin = this.hasEle ? Math.min(...eles) : 0;
@@ -53,6 +57,11 @@ export class ProfileChart {
 
   setCursor(i) {
     this.cursor = i;
+    this.draw();
+  }
+
+  setPinned(i) {
+    this.pinned = i;
     this.draw();
   }
 
@@ -166,11 +175,19 @@ export class ProfileChart {
     g.textAlign = 'right'; g.fillStyle = col.speed;
     g.fillText(t('legend.title'), x1, 6);
 
-    // cursor
-    if (this.cursor != null) {
-      const i = this.cursor;
+    // pinned point: dashed accent line, always visible
+    if (this.pinned != null) {
+      const x = X(p.dist[this.pinned]);
+      g.save(); g.setLineDash([4, 3]); g.lineWidth = 1.5; g.strokeStyle = css(c, '--accent');
+      g.beginPath(); g.moveTo(x, y0); g.lineTo(x, y1); g.stroke(); g.restore();
+    }
+
+    // label: the hovered point, or the pinned one when the pointer is elsewhere
+    const shown = this.cursor ?? this.pinned;
+    if (shown != null) {
+      const i = shown;
       const x = X(p.dist[i]);
-      g.strokeStyle = col.cursor; g.beginPath(); g.moveTo(x, y0); g.lineTo(x, y1); g.stroke();
+      if (this.cursor != null) { g.strokeStyle = col.cursor; g.beginPath(); g.moveTo(x, y0); g.lineTo(x, y1); g.stroke(); }
       const label = [fmt.distance(p.dist[i]), p.ele[i] != null ? fmt.elevation(p.ele[i]) : null, fmt.speed(p.speed[i])]
         .filter(Boolean).join(' · ');
       g.font = '600 12px system-ui, sans-serif';
