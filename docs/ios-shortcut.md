@@ -1,6 +1,6 @@
 # iPhone: "Send to Stezhka" on the share sheet
 
-After a ride, share the GPX from Open GPX Tracker (or the Files app) and pick **Send to Stezhka**.
+After a ride, share the GPX (one or several) from Open GPX Tracker or the Files app and pick **Send to Stezhka**.
 The Shortcut uploads it with a per-device **upload key** that can do nothing but upload rides.
 Uploading the same file twice is harmless: Stezhka recognises it and says so.
 
@@ -13,20 +13,23 @@ The key (`stz_up_…`) is shown only once. Lost it? Revoke it and create a new o
 
 1. **+** (new shortcut), name it **Send to Stezhka**.
 2. Tap the **ⓘ** (details) → enable **Show in Share Sheet** → under *Receive*, allow only **Files**.
-3. Add **Get Contents of URL**:
-   - URL: `https://<your Stezhka site>/api/rides`
-   - Method: **POST**
-   - Headers:
-     - `Authorization` = `Bearer stz_up_…` (your key)
-     - `X-Filename` = *Shortcut Input* → *Name* (optional; Stezhka shows it as the source file)
-   - Request Body: **File** → *Shortcut Input*
-4. Add **Get Dictionary Value**: key `error`, from *Contents of URL*.
-5. Add **If** *Dictionary Value* **has any value**:
-   - **Show Notification**: `Stezhka: upload failed (Dictionary Value)`
-   - **Otherwise**: **Show Notification**: `Stezhka: ride uploaded`
-   - (End If)
+3. Add **Repeat with Each** item in *Shortcut Input*. Stezhka takes one file per request, so
+   this loop is what makes sharing several tracks at once work (one file works the same way).
+   Inside the loop:
+   1. **Get Contents of URL**:
+      - URL: `https://<your Stezhka site>/api/rides`
+      - Method: **POST**
+      - Headers:
+        - `Authorization` = `Bearer stz_up_…` (your key)
+        - `X-Filename` = *Repeat Item* → *Name* (optional; Stezhka shows it as the source file)
+      - Request Body: **File** → *Repeat Item*
+   2. **Get Dictionary Value**: key `error`, from *Contents of URL*.
+   3. **If** *Dictionary Value* **has any value**:
+      **Show Notification**: `Stezhka: Repeat Item failed (Dictionary Value)` → **End If**
+4. After **End Repeat**: **Show Notification**: `Stezhka: done (Count of Shortcut Input files)`
+   (use a **Count** action on *Shortcut Input*, or just write `Stezhka: done`).
 
-Answers you may see in that notification: `invalid_gpx` (not a usable track),
+Answers you may see in a failure notification: `invalid_gpx` (not a usable track),
 `unauthorized` (key wrong or revoked), `file_too_large`.
 
 ## 3. Use it
