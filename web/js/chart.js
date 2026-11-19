@@ -2,6 +2,7 @@
 // No chart library: one profile, fully controlled, no dependency to keep updated.
 import { t } from './i18n.js';
 import * as fmt from './format.js';
+import { MARK_COLORS } from './feelings.js';
 
 const PAD = { l: 48, r: 52, t: 26, b: 24 };
 
@@ -23,18 +24,43 @@ export class ProfileChart {
     this.data = null;
     this.cursor = null; // hovered point
     this.pinned = null; // clicked point, kept until another click or another ride
+    this.marks = []; // [{i0, i1, kind}] marked stretches/spots, drawn as bands
+    this.selection = null; // {a, b} while marking a stretch
+    this.selectDone = null; // set while in "mark a stretch" mode
     this.hoverHandlers = new Set();
     this.selectHandlers = new Set();
     new ResizeObserver(() => this.draw()).observe(canvas);
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => this.draw());
     // Mouse: hover follows, click pins. Touch: the finger scrubs along the profile and the point under
     // it when lifted is pinned (a 'click' would only report where the touch started).
+    // Marking mode: press, drag along the profile, release = that stretch (a tap = one spot).
     canvas.addEventListener('pointerdown', (e) => {
       if (e.pointerType !== 'mouse') canvas.setPointerCapture(e.pointerId);
+      if (this.selectDone && (e.pointerType !== 'mouse' || e.button === 0)) {
+        canvas.setPointerCapture(e.pointerId);
+        const i = this._indexAt(e);
+        if (i != null) this.selection = { a: i, b: i, dragging: true };
+      }
       this._pointer(e);
     });
-    canvas.addEventListener('pointermove', (e) => this._pointer(e));
+    canvas.addEventListener('pointermove', (e) => {
+      if (this.selection?.dragging) {
+        const i = this._indexAt(e);
+        if (i != null) this.selection.b = i;
+      }
+      this._pointer(e);
+    });
     canvas.addEventListener('pointerup', (e) => {
+      if (this.selection?.dragging) {
+        const { a, b } = this.selection;
+        this.selection = { a: Math.min(a, b), b: Math.max(a, b) };
+        const done = this.selectDone;
+        this.selectDone = null;
+        canvas.classList.remove('selecting');
+        this.setCursor(null); this._emit(null);
+        done(this.selection.a, this.selection.b);
+        return;
+      }
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       const i = this._indexAt(e);
       if (i == null) return;
@@ -56,6 +82,8 @@ export class ProfileChart {
     this.data = pts;
     this.cursor = null;
     this.pinned = null;
+    this.marks = [];
+    this.selection = null;
     const eles = pts.ele.filter((v) => v != null);
     this.hasEle = eles.length > 1;
     this.eleMin = this.hasEle ? Math.min(...eles) : 0;
@@ -72,6 +100,27 @@ export class ProfileChart {
 
   setPinned(i) {
     this.pinned = i;
+    this.draw();
+  }
+
+  setMarks(marks) {
+    this.marks = marks;
+    this.draw();
+  }
+
+  /** Let the user drag out a stretch; done(i0, i1) gets the point indices. */
+  startSelect(done) {
+    this.selectDone = done;
+    this.selection = null;
+    this.canvas.classList.add('selecting');
+    this.draw();
+  }
+
+  /** Leave marking mode and/or show a fixed selection ({a, b} indices) or none. */
+  setSelection(sel) {
+    this.selectDone = null;
+    this.canvas.classList.remove('selecting');
+    this.selection = sel;
     this.draw();
   }
 
@@ -131,6 +180,17 @@ export class ProfileChart {
 
     g.font = '11px system-ui, sans-serif';
     g.lineWidth = 1;
+
+    // marked stretches (bands) and spots (lines), behind everything else
+    const band = (i0, i1, color, alpha) => {
+      const xa = X(p.dist[i0]);
+      const xb = X(p.dist[i1]);
+      g.save(); g.globalAlpha = alpha; g.fillStyle = color;
+      if (xb - xa < 3) g.fillRect(xa - 1.5, y0, 3, y1 - y0); else g.fillRect(xa, y0, xb - xa, y1 - y0);
+      g.restore();
+    };
+    for (const m of this.marks) band(m.i0, m.i1, MARK_COLORS[m.kind], 0.16);
+    if (this.selection) band(this.selection.a, this.selection.b, MARK_COLORS.draft, 0.28);
 
     // x grid (distance)
     const xStep = niceStep(this.distMax, Math.max(2, Math.floor((x1 - x0) / 90)));

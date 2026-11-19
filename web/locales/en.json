@@ -184,5 +184,33 @@
     "split": "Split off",
     "split_help": "Not the same trip: show it as a separate ride",
     "split_done": "Split off: it is a separate ride now."
+  },
+  "feeling": {
+    "question": "How was it?",
+    "like": "Liked it",
+    "neutral": "It was OK",
+    "dislike": "Didn't like it"
+  },
+  "tag": {
+    "surface": "Bad surface, potholes",
+    "puddles": "Puddles, mud",
+    "traffic": "Traffic too close or fast",
+    "pedestrians": "Crowded with pedestrians",
+    "turns": "Too many turns, confusing",
+    "steep": "Steep",
+    "unsafe": "Felt unsafe, dark",
+    "other": "Something else",
+    "smooth": "Smooth",
+    "quiet": "Quiet",
+    "scenic": "Scenic, interesting",
+    "green": "Green, shaded"
+  },
+  "marks": {
+    "add": "Mark a stretch",
+    "hint": "Drag along the profile below to select a stretch, or tap it for a single spot.",
+    "note": "Note (optional)",
+    "spot": "At {{at}}",
+    "range": "{{from}} – {{to}}",
+    "deleted": "Mark deleted."
   }
 }

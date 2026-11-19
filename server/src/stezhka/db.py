@@ -164,6 +164,25 @@ MIGRATIONS: list[str] = [
     ALTER TABLE rides ADD COLUMN name_edited INTEGER NOT NULL DEFAULT 0; -- typed by the user, not from the GPX
     CREATE INDEX rides_primary ON rides(primary_id) WHERE primary_id IS NOT NULL;
     """,
+    # 7: how a ride felt (feelings.py): -1 / 0 / 1 + reason tags, and marks on stretches of it
+    """
+    ALTER TABLE rides ADD COLUMN feeling INTEGER CHECK (feeling IN (-1, 0, 1));
+    ALTER TABLE rides ADD COLUMN feeling_tags TEXT; -- JSON array of feelings.TAGS
+    CREATE TABLE ride_marks (
+        id         INTEGER PRIMARY KEY,
+        ride_id    INTEGER NOT NULL REFERENCES rides(id) ON DELETE CASCADE,
+        start_t    REAL NOT NULL,  -- by time and position: point indices change on reprocessing
+        end_t      REAL NOT NULL,
+        start_lat  REAL NOT NULL,
+        start_lon  REAL NOT NULL,
+        end_lat    REAL NOT NULL,
+        end_lon    REAL NOT NULL,
+        tags       TEXT,           -- JSON array of feelings.TAGS
+        note       TEXT,
+        created_at REAL NOT NULL
+    );
+    CREATE INDEX ride_marks_ride ON ride_marks(ride_id, start_t);
+    """,
 ]
 
 

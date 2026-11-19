@@ -12,6 +12,7 @@ import time
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from enum import StrEnum
+from typing import Literal
 from urllib.parse import unquote
 
 from fastapi import Depends, FastAPI, Request, Response
@@ -28,7 +29,7 @@ from .db import connect
 from .gpx import GpxError
 from .dem import ATTRIBUTION as DEM_ATTRIBUTION
 from .enrich import EnrichWorker
-from . import recordings
+from . import feelings, recordings
 from .ingest import (
     MAX_FILE_BYTES, TRASH_DAYS, InboxWatcher, TrashPurger, delete_ride, import_bytes, restore_ride, trash_ride,
 )
@@ -73,6 +74,20 @@ class RidePatch(BaseModel):
     name: str | None = Field(default=None, max_length=200)
     notes: str | None = Field(default=None, max_length=10_000)
     bike_id: int | None = None
+    feeling: Literal[-1, 0, 1] | None = None
+    feeling_tags: list[str] | None = Field(default=None, max_length=len(feelings.TAGS))
+
+
+class MarkBody(BaseModel):
+    start_t: float
+    end_t: float
+    tags: list[str] = Field(default_factory=list, max_length=len(feelings.TAGS))
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class MarkPatch(BaseModel):
+    tags: list[str] | None = Field(default=None, max_length=len(feelings.TAGS))
+    note: str | None = Field(default=None, max_length=2000)
 
 
 class BikeBody(BaseModel):
@@ -84,6 +99,7 @@ _RIDE_COLUMNS = (
     "r.id, r.name, r.activity, r.started_at, r.ended_at, r.elapsed_s, r.moving_s, r.distance_m,"
     " r.avg_moving_mps, r.max_mps, r.ascent_m, r.descent_m, r.point_count, r.speed_source,"
     " r.bike_id, b.name AS bike_name, r.notes, r.ele_source, r.enrich_error, r.creator, r.primary_id,"
+    " r.feeling, r.feeling_tags,"
     " (SELECT group_concat(o.creator, ' + ') FROM rides o WHERE o.primary_id = r.id AND o.trashed_at IS NULL)"
     " AS other_creators,"
     " (SELECT COUNT(*) FROM stops s WHERE s.ride_id = r.id AND s.kind = 'stop') AS stop_count"
@@ -345,7 +361,9 @@ def create_app(cfg: Config) -> FastAPI:
         ).fetchone()
         if not row:
             raise ApiError(404, ErrorCode.NOT_FOUND)
-        return dict(row)
+        ride = dict(row)
+        ride["feeling_tags"] = feelings.load_tags(ride["feeling_tags"])
+        return ride
 
     @app.get("/api/rides")
     def list_rides(conn: sqlite3.Connection = Depends(require_auth)):
@@ -353,7 +371,10 @@ def create_app(cfg: Config) -> FastAPI:
             f"SELECT {_RIDE_COLUMNS} FROM rides r LEFT JOIN bikes b ON b.id = r.bike_id"
             " WHERE r.trashed_at IS NULL AND r.primary_id IS NULL ORDER BY r.started_at DESC"
         ).fetchall()
-        return {"rides": [dict(r) for r in rows]}
+        rides = [dict(r) for r in rows]
+        for r in rides:
+            r["feeling_tags"] = feelings.load_tags(r["feeling_tags"])
+        return {"rides": rides}
 
     @app.get("/api/rides/{ride_id}")
     def get_ride(ride_id: int, conn: sqlite3.Connection = Depends(require_auth)):
@@ -378,6 +399,7 @@ def create_app(cfg: Config) -> FastAPI:
             (main, main, ride_id),
         ).fetchall()
         ride["recordings"] = [dict(r) for r in rec]  # the trip's other recordings (other phones)
+        ride["marks"] = feelings.marks(conn, ride_id)
         return ride
 
     @app.get("/api/rides/{ride_id}/points")
@@ -471,6 +493,50 @@ def create_app(cfg: Config) -> FastAPI:
         delete_ride(conn, cfg.raw_dir, ride_id)
         return {"ok": True}
 
+    # --- marks: stretches or spots of a ride with reasons and a note -----------------------------
+
+    def _mark_tags(tags: list[str] | None) -> list[str]:
+        try:
+            return feelings.clean_tags(tags)
+        except ValueError:
+            raise ApiError(400, ErrorCode.BAD_REQUEST) from None
+
+    def _mark(conn: sqlite3.Connection, mark_id: int) -> sqlite3.Row:
+        row = conn.execute(
+            "SELECT m.id, m.ride_id FROM ride_marks m JOIN rides r ON r.id = m.ride_id"
+            " WHERE m.id = ? AND r.trashed_at IS NULL",
+            (mark_id,),
+        ).fetchone()
+        if not row:
+            raise ApiError(404, ErrorCode.NOT_FOUND)
+        return row
+
+    @app.post("/api/rides/{ride_id}/marks", status_code=201)
+    def add_mark(ride_id: int, body: MarkBody, conn: sqlite3.Connection = Depends(require_auth)):
+        ride = _ride(conn, ride_id)
+        lo, hi = sorted((body.start_t, body.end_t))
+        if lo < ride["started_at"] - 1 or hi > ride["ended_at"] + 1:
+            raise ApiError(400, ErrorCode.BAD_REQUEST)
+        note = body.note.strip() if body.note else None
+        mark_id = feelings.add_mark(conn, ride_id, lo, hi, _mark_tags(body.tags), note or None)
+        return {"id": mark_id}
+
+    @app.patch("/api/marks/{mark_id}")
+    def edit_mark(mark_id: int, body: MarkPatch, conn: sqlite3.Connection = Depends(require_auth)):
+        _mark(conn, mark_id)
+        if "tags" in body.model_fields_set:
+            conn.execute("UPDATE ride_marks SET tags = ? WHERE id = ?", (feelings.dump_tags(_mark_tags(body.tags)), mark_id))
+        if "note" in body.model_fields_set:
+            note = body.note.strip() if body.note else None
+            conn.execute("UPDATE ride_marks SET note = ? WHERE id = ?", (note or None, mark_id))
+        return {"ok": True}
+
+    @app.delete("/api/marks/{mark_id}")
+    def remove_mark(mark_id: int, conn: sqlite3.Connection = Depends(require_auth)):
+        _mark(conn, mark_id)
+        conn.execute("DELETE FROM ride_marks WHERE id = ?", (mark_id,))
+        return {"ok": True}
+
     # --- recordings of one trip ----------------------------------------------------------------
 
     @app.post("/api/rides/{ride_id}/main")
@@ -495,6 +561,13 @@ def create_app(cfg: Config) -> FastAPI:
                 raise ApiError(404, ErrorCode.NOT_FOUND)
         if "name" in fields:
             fields["name_edited"] = 1
+        if "feeling_tags" in fields:
+            try:
+                fields["feeling_tags"] = feelings.dump_tags(feelings.clean_tags(fields["feeling_tags"]))
+            except ValueError:
+                raise ApiError(400, ErrorCode.BAD_REQUEST) from None
+        if "feeling" in fields and fields["feeling"] is None:
+            fields["feeling_tags"] = None  # "not rated" has no reasons
         if fields:
             sets = ", ".join(f"{k} = :{k}" for k in fields)  # keys come from the pydantic model only
             conn.execute(f"UPDATE rides SET {sets} WHERE id = :id", {**fields, "id": ride_id})

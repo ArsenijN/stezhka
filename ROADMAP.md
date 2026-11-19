@@ -28,12 +28,11 @@ Versions follow SemVer `0.y.z`: each milestone below bumps `y`.
 - **v0.4.3** Two phones on one trip are linked into one ride automatically (≥ 60 % time overlap and
   ≤ 60 m median distance; the denser recording is main), with one-tap compare, *Make main* and
   *Split off*. Totals (week / month / all, last 14 days), counting each trip once.
+- **v0.4.4** How a ride felt: 👍 / 😐 / 👎 (tap again = not rated) with reason chips (problems and
+  good things), and any number of marked stretches or spots per ride, each with chips and a note,
+  drawn on the map and the profile. Stored by time + position so v0.5 can attach them to road
+  segments; routing (v0.7) will weigh them, puddles together with the ride's wetness.
 
-## Planned: how a ride felt
-
-Like / dislike per ride, optionally with reasons; later per stretch of road once segments exist
-(v0.5). Feeds routing (v0.7): liked = no real problems, disliked = avoid unless much faster.
-Reasons to settle before building (see the discussion of 2026-11-19).
 
 ## UI ideas (when the need shows up)
 

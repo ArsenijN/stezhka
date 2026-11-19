@@ -8,6 +8,7 @@
 import * as maplibregl from '../vendor/maplibre-gl/maplibre-gl.mjs';
 import { t } from './i18n.js';
 import * as fmt from './format.js';
+import { MARK_COLORS } from './feelings.js';
 
 // km/h -> colour. Shared with the legend. Dark red (crawling) to violet (fast descent).
 export const SPEED_STOPS = [
@@ -85,6 +86,7 @@ export class RideMap {
     this.stops = EMPTY;
     this.cursor = EMPTY;
     this.compare = EMPTY;
+    this.marks = EMPTY;
     this.points = null;
     this.hoverHandlers = new Set();
     this.selectHandlers = new Set();
@@ -147,6 +149,14 @@ export class RideMap {
     m.addSource('stops', { type: 'geojson', data: this.stops });
     m.addSource('cursor', { type: 'geojson', data: this.cursor });
     m.addSource('compare', { type: 'geojson', data: this.compare });
+    m.addSource('marks', { type: 'geojson', data: this.marks, tolerance: 0 });
+    const markColor = ['match', ['get', 'kind'], 'bad', MARK_COLORS.bad, 'good', MARK_COLORS.good, 'draft', MARK_COLORS.draft, MARK_COLORS.note];
+    // marked stretches: a wide halo under the track
+    m.addLayer({
+      id: 'marks-line', type: 'line', source: 'marks', filter: ['==', ['geometry-type'], 'LineString'],
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': markColor, 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 10, 16, 22], 'line-opacity': 0.4 },
+    });
     // Second ride for comparison, drawn under the main track.
     m.addLayer({
       id: 'compare', type: 'line', source: 'compare',
@@ -180,6 +190,11 @@ export class RideMap {
         'circle-stroke-color': '#fff',
         'circle-stroke-width': 2,
       },
+    });
+    // marked spots: rings, unlike the filled stop dots
+    m.addLayer({
+      id: 'marks-spot', type: 'circle', source: 'marks', filter: ['==', ['geometry-type'], 'Point'],
+      paint: { 'circle-radius': 9, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': markColor, 'circle-stroke-width': 4 },
     });
     m.addLayer({
       id: 'cursor', type: 'circle', source: 'cursor',
@@ -217,6 +232,25 @@ export class RideMap {
       new maplibregl.Popup({ closeButton: false }).setLngLat(e.lngLat).setDOMContent(box).addTo(m);
     });
     m.on('mouseenter', 'stops', () => { m.getCanvas().style.cursor = 'pointer'; });
+    for (const layer of ['marks-line', 'marks-spot']) {
+      m.on('click', layer, (e) => {
+        const p = e.features?.[0]?.properties;
+        if (!p || p.kind === 'draft') return;
+        const box = document.createElement('div');
+        const tags = JSON.parse(p.tags || '[]');
+        if (tags.length) {
+          const title = document.createElement('strong');
+          title.textContent = tags.map((tg) => t(`tag.${tg}`)).join(', ');
+          box.append(title);
+        }
+        if (p.note) {
+          const body = document.createElement('div');
+          body.textContent = p.note;
+          box.append(body);
+        }
+        if (box.childElementCount) new maplibregl.Popup({ closeButton: false }).setLngLat(e.lngLat).setDOMContent(box).addTo(m);
+      });
+    }
     m.on('mouseleave', 'stops', () => { m.getCanvas().style.cursor = ''; });
   }
 
@@ -243,6 +277,7 @@ export class RideMap {
         geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
       })),
     });
+    this._setData('marks', EMPTY); // the app sends this ride's marks after showRide
     this.setCursor(null);
     if (pts.length) {
       const b = new maplibregl.LngLatBounds();
@@ -264,6 +299,24 @@ export class RideMap {
     this._setData('compare', {
       type: 'FeatureCollection',
       features: [{ type: 'Feature', properties: {}, geometry: { type: 'MultiLineString', coordinates: lines } }],
+    });
+  }
+
+  /** Marks: [{i0, i1, kind, tags, note}] by track point index; a spot has i0 === i1. */
+  showMarks(marks) {
+    const d = this.points;
+    if (!d) return;
+    this._setData('marks', {
+      type: 'FeatureCollection',
+      features: marks.map((mk) => {
+        const props = { kind: mk.kind, tags: JSON.stringify(mk.tags || []), note: mk.note || '' };
+        if (mk.i1 - mk.i0 < 1) {
+          return { type: 'Feature', properties: props, geometry: { type: 'Point', coordinates: [d.lon[mk.i0], d.lat[mk.i0]] } };
+        }
+        const coords = [];
+        for (let i = mk.i0; i <= mk.i1; i++) coords.push([d.lon[i], d.lat[i]]);
+        return { type: 'Feature', properties: props, geometry: { type: 'LineString', coordinates: coords } };
+      }),
     });
   }
 

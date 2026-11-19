@@ -69,6 +69,8 @@ def _make_main(conn: sqlite3.Connection, group: list[int], main_id: int) -> None
     for rid in group:
         if rid != main_id:
             conn.execute("UPDATE rides SET primary_id = ? WHERE id = ?", (main_id, rid))
+            # marks are by time and position, so they stay right on any recording of the trip
+            conn.execute("UPDATE ride_marks SET ride_id = ? WHERE ride_id = ?", (main_id, rid))
 
 
 def _best(conn: sqlite3.Connection, group: list[int]) -> int:
@@ -89,9 +91,12 @@ _TIMESTAMP_NAME = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{1,2}[:_]\d{2}")
 def _merge_user_fields(conn: sqlite3.Connection, group: list[int], main_id: int) -> None:
     """The trip's name, notes and bike live on the main recording: fill what it lacks from the others."""
     rows = {r["id"]: r for r in conn.execute(
-        f"SELECT id, name, name_edited, notes, bike_id FROM rides WHERE id IN ({','.join('?' * len(group))})", group)}
+        f"SELECT id, name, name_edited, notes, bike_id, feeling, feeling_tags FROM rides WHERE id IN ({','.join('?' * len(group))})", group)}
     main = rows[main_id]
     others = [rows[i] for i in group if i != main_id]
+    rated = next((r for r in [main, *others] if r["feeling"] is not None), None)
+    feeling = rated["feeling"] if rated else None
+    feeling_tags = rated["feeling_tags"] if rated else None
     real_name = lambda n: bool(n) and not _TIMESTAMP_NAME.match(n)  # noqa: E731
     # a name the user typed wins, then a real (non-timestamp) name from a GPX file, main's first
     ranked = sorted([main, *others], key=lambda r: (not r["name_edited"], not real_name(r["name"])))
@@ -100,7 +105,8 @@ def _merge_user_fields(conn: sqlite3.Connection, group: list[int], main_id: int)
     notes = main["notes"] or next((o["notes"] for o in others if o["notes"]), None)
     bike = main["bike_id"] if main["bike_id"] is not None else next((o["bike_id"] for o in others if o["bike_id"] is not None), None)
     conn.execute(
-        "UPDATE rides SET name = ?, name_edited = ?, notes = ?, bike_id = ? WHERE id = ?", (name, edited, notes, bike, main_id)
+        "UPDATE rides SET name = ?, name_edited = ?, notes = ?, bike_id = ?, feeling = ?, feeling_tags = ? WHERE id = ?",
+        (name, edited, notes, bike, feeling, feeling_tags, main_id),
     )
 
 
@@ -155,8 +161,8 @@ def set_main(conn: sqlite3.Connection, ride_id: int) -> bool:
         # the user's name, notes and bike belong to the trip: move them to the new main recording
         if main != ride_id:
             conn.execute(
-                "UPDATE rides SET (name, name_edited, notes, bike_id) ="
-                " (SELECT name, name_edited, notes, bike_id FROM rides WHERE id = :old)"
+                "UPDATE rides SET (name, name_edited, notes, bike_id, feeling, feeling_tags) ="
+                " (SELECT name, name_edited, notes, bike_id, feeling, feeling_tags FROM rides WHERE id = :old)"
                 " WHERE id = :new",
                 {"old": main, "new": ride_id},
             )

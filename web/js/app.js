@@ -6,6 +6,7 @@ import * as fmt from './format.js';
 import { RideMap, SPEED_STOPS } from './map.js';
 import { ProfileChart } from './chart.js';
 import { initSettings } from './settings.js';
+import { NEGATIVE_TAGS, POSITIVE_TAGS, markKind, tagsFor } from './feelings.js';
 import { $, el, errorText, icon, iconButton, rideTitle, TIMESTAMP_NAME, toast } from './ui.js';
 
 const state = {
@@ -21,7 +22,12 @@ const state = {
   config: null,
   details: initialDetails(), // full stats (true) or the essentials only
   eleInfo: false, // elevation-source note shown
+  feelingOpen: false, // reason chips shown in the compact view right after picking a feeling
+  markMode: false, // waiting for a drag/tap on the profile
+  draft: null, // mark being created or edited: {id|null, start_t, end_t, tags, note}
 };
+
+const FEELING_EMOJI = { 1: '👍', 0: '😐', '-1': '👎' };
 
 const NARROW = matchMedia('(max-width: 760px)');
 
@@ -170,7 +176,7 @@ function renderRideList() {
     list.append(el('li', {},
       el('a', { href: `#ride=${r.id}`, class: 'ride-item', 'aria-current': selected ? 'true' : 'false' },
         el('span', { class: 'ride-date' }, fmt.rideDate(r.started_at)),
-        el('span', { class: 'ride-name' }, rideTitle(r)),
+        el('span', { class: 'ride-name' }, rideTitle(r), r.feeling != null ? ` ${FEELING_EMOJI[r.feeling]}` : ''),
         el('span', { class: 'ride-meta' }, meta),
         r.bike_name ? el('span', { class: 'ride-bike' }, r.bike_name) : null,
         // recording app(s), as named in the files; a trip recorded by two phones lists both
@@ -301,6 +307,191 @@ function compareRow(r) {
     })) : null);
 }
 
+// --- how it felt: feeling, reasons, marks ---------------------------------------------------------
+
+function chip(tag, on, onclick) {
+  return el('button', { type: 'button', class: `chip${on ? ' on' : ''}`, 'aria-pressed': String(on), onclick }, t(`tag.${tag}`));
+}
+
+async function patchRide(fields) {
+  try {
+    const updated = await api(`rides/${state.ride.id}`, { method: 'PATCH', json: fields });
+    state.ride = { ...state.ride, ...updated };
+    const listed = state.rides.find((o) => o.id === state.ride.id);
+    if (listed) Object.assign(listed, { feeling: updated.feeling, feeling_tags: updated.feeling_tags });
+  } catch (ex) {
+    toast(errorText(ex), 'error');
+  }
+}
+
+// Tapping the chosen feeling again clears it: "not rated" is different from "it was OK".
+async function setFeeling(value) {
+  const tags = value == null ? [] : state.ride.feeling_tags.filter((tg) => tagsFor(value).includes(tg));
+  await patchRide(value == null ? { feeling: null } : { feeling: value, feeling_tags: tags });
+  state.feelingOpen = value != null;
+  renderRideList();
+  renderStats();
+}
+
+async function toggleFeelingTag(tag) {
+  const tags = state.ride.feeling_tags.includes(tag)
+    ? state.ride.feeling_tags.filter((x) => x !== tag) : [...state.ride.feeling_tags, tag];
+  await patchRide({ feeling_tags: tags });
+  renderStats();
+}
+
+function feelingRow(r, full) {
+  const btn = (value, label) => el('button', {
+    type: 'button', class: `btn small feel${r.feeling === value ? ' active' : ''}`, 'aria-pressed': String(r.feeling === value),
+    title: label, 'aria-label': label, onclick: () => setFeeling(r.feeling === value ? null : value),
+  }, FEELING_EMOJI[value]);
+  const markBtn = state.markMode
+    ? el('button', { type: 'button', class: 'btn small', onclick: cancelMarking }, t('actions.cancel'))
+    : el('button', { type: 'button', class: 'btn small', onclick: startMarking, disabled: state.draft != null }, `+ ${t('marks.add')}`);
+  return [
+    el('div', { class: 'feeling-row' },
+      el('span', { class: 'muted' }, t('feeling.question')),
+      btn(1, t('feeling.like')), btn(0, t('feeling.neutral')), btn(-1, t('feeling.dislike')),
+      el('span', { class: 'spacer' }), markBtn),
+    r.feeling != null && (full || state.feelingOpen)
+      ? el('div', { class: 'chips feeling-chips' }, ...tagsFor(r.feeling).map((tg) => chip(tg, r.feeling_tags.includes(tg), () => toggleFeelingTag(tg))))
+      : null,
+    state.markMode ? el('p', { class: 'note mark-hint' }, t('marks.hint')) : null,
+  ];
+}
+
+function idxAtTime(time) {
+  const ts = state.points.t;
+  let lo = 0, hi = ts.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (ts[mid] < time) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+}
+
+function markRange(m) {
+  return { i0: idxAtTime(m.start_t), i1: idxAtTime(m.end_t) };
+}
+
+function markWhere(m) {
+  const { i0, i1 } = markRange(m);
+  const d = state.points.dist;
+  return i1 - i0 < 1 ? t('marks.spot', { at: fmt.distance(d[i0]) }) : t('marks.range', { from: fmt.distance(d[i0]), to: fmt.distance(d[i1]) });
+}
+
+/** Push the ride's marks (and the one being edited) to the map and the profile. */
+function updateMarks() {
+  if (!state.points || !state.ride) return;
+  const saved = state.ride.marks.filter((m) => m.id !== state.draft?.id)
+    .map((m) => ({ ...markRange(m), kind: markKind(m.tags), tags: m.tags, note: m.note }));
+  const draft = state.draft ? { ...markRange(state.draft), kind: 'draft' } : null;
+  state.chart.setMarks(saved);
+  if (!state.markMode) state.chart.setSelection(draft ? { a: draft.i0, b: draft.i1 } : null);
+  state.map.showMarks(draft ? [...saved, draft] : saved);
+}
+
+function startMarking() {
+  state.markMode = true;
+  state.draft = null;
+  renderStats();
+  state.chart.startSelect((i0, i1) => {
+    state.markMode = false;
+    state.draft = { id: null, start_t: state.points.t[i0], end_t: state.points.t[i1], tags: [], note: '' };
+    renderStats();
+    updateMarks();
+  });
+}
+
+function cancelMarking() {
+  state.markMode = false;
+  state.draft = null;
+  state.chart.setSelection(null);
+  renderStats();
+  updateMarks();
+}
+
+async function refreshRide() {
+  try {
+    state.ride = await api(`rides/${state.ride.id}`);
+  } catch (ex) {
+    toast(errorText(ex), 'error');
+  }
+  state.draft = null;
+  renderStats();
+  updateMarks();
+}
+
+async function saveMark(e) {
+  e.preventDefault();
+  const d = state.draft;
+  const body = { tags: d.tags, note: d.note.trim() || null };
+  try {
+    if (d.id) await api(`marks/${d.id}`, { method: 'PATCH', json: body });
+    else await api(`rides/${state.ride.id}/marks`, { method: 'POST', json: { start_t: d.start_t, end_t: d.end_t, ...body } });
+  } catch (ex) {
+    toast(errorText(ex), 'error');
+    return;
+  }
+  await refreshRide();
+}
+
+async function deleteMark(m) {
+  try {
+    await api(`marks/${m.id}`, { method: 'DELETE' });
+  } catch (ex) {
+    toast(errorText(ex), 'error');
+    return;
+  }
+  const rideId = state.ride.id;
+  await refreshRide();
+  toast(t('marks.deleted'), 'info', { ms: 8000, action: { label: t('actions.undo'), run: async () => {
+    await api(`rides/${rideId}/marks`, { method: 'POST', json: { start_t: m.start_t, end_t: m.end_t, tags: m.tags, note: m.note } });
+    if (state.ride?.id === rideId) await refreshRide();
+  } } });
+}
+
+function focusMark(m) {
+  const { i0, i1 } = markRange(m);
+  const mid = Math.round((i0 + i1) / 2);
+  state.map.setPinned(mid);
+  state.chart.setPinned(mid);
+  state.map.panToPoint(mid);
+}
+
+function markEditor() {
+  const d = state.draft;
+  const toggle = (tg) => () => {
+    d.tags = d.tags.includes(tg) ? d.tags.filter((x) => x !== tg) : [...d.tags, tg];
+    renderStats();
+  };
+  return el('form', { class: 'mark-editor', onsubmit: saveMark },
+    el('strong', {}, markWhere(d)),
+    el('div', { class: 'chips' }, ...NEGATIVE_TAGS.map((tg) => chip(tg, d.tags.includes(tg), toggle(tg)))),
+    el('div', { class: 'chips' }, ...POSITIVE_TAGS.map((tg) => chip(tg, d.tags.includes(tg), toggle(tg)))),
+    el('textarea', { rows: '2', maxlength: '2000', placeholder: t('marks.note'), 'aria-label': t('marks.note'), value: d.note,
+      oninput: (e) => { d.note = e.target.value; } }),
+    el('div', { class: 'edit-actions' },
+      el('button', { type: 'submit', class: 'btn primary small' }, t('actions.save')),
+      el('button', { type: 'button', class: 'btn small', onclick: cancelMarking }, t('actions.cancel'))));
+}
+
+function marksList(r) {
+  if (!r.marks.length) return null;
+  return el('ul', { class: 'mark-list' }, ...r.marks.map((m) => el('li', { class: `mark-item ${markKind(m.tags)}` },
+    el('button', { type: 'button', class: 'mark-where', onclick: () => focusMark(m) }, markWhere(m)),
+    el('span', { class: 'mark-text' },
+      m.tags.length ? el('span', {}, m.tags.map((tg) => t(`tag.${tg}`)).join(', ')) : null,
+      m.note ? el('span', { class: 'muted' }, m.tags.length ? ' · ' : '', m.note) : null),
+    el('span', { class: 'row-actions' },
+      iconButton('edit', t('actions.edit'), () => {
+        state.draft = { id: m.id, start_t: m.start_t, end_t: m.end_t, tags: [...m.tags], note: m.note || '' };
+        renderStats();
+        updateMarks();
+      }),
+      iconButton('trash', t('actions.delete'), () => deleteMark(m), 'danger')))));
+}
+
 function findRide(id) {
   return state.rides.find((o) => o.id === id) ?? state.ride?.recordings.find((o) => o.id === id);
 }
@@ -389,6 +580,9 @@ function renderStats() {
     state.editing ? editForm(r) : titleRow(r),
     full && !state.editing && r.notes ? el('p', { class: 'ride-notes' }, r.notes) : null,
     grid,
+    ...(state.editing ? [] : feelingRow(r, full)),
+    state.draft ? markEditor() : null,
+    full && !state.draft ? marksList(r) : null,
     recordingsRow(r),
     full && state.eleInfo
       ? el('p', { class: 'note' }, r.ele_source === 'dem' ? t('stats.elevation_source_dem') : t('stats.elevation_source_gps'))
@@ -437,6 +631,9 @@ function renderLegend() {
 
 async function selectRide(id) {
   state.editing = false;
+  state.feelingOpen = false;
+  state.markMode = false;
+  state.draft = null;
   if (state.compareId === id) state.compareId = null;
   if (!id) {
     state.ride = null;
@@ -459,6 +656,7 @@ async function selectRide(id) {
   renderStats();
   state.chart.setData(state.points);
   await state.map.showRide(state.points, state.ride.stops);
+  updateMarks();
   if (state.compareId) await setCompare(state.compareId);
 }
 
