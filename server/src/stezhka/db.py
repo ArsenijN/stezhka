@@ -152,6 +152,11 @@ MIGRATIONS: list[str] = [
         last_used_at REAL
     );
     """,
+    # 5: deleting moves a ride to the trash first (undo, "recently deleted"); purged after TRASH_DAYS
+    """
+    ALTER TABLE rides ADD COLUMN trashed_at REAL;
+    CREATE INDEX rides_trashed ON rides(trashed_at) WHERE trashed_at IS NOT NULL;
+    """,
 ]
 
 

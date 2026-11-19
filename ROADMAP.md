@@ -23,6 +23,8 @@ Versions follow SemVer `0.y.z`: each milestone below bumps `y`.
   monthly map refresh timers.
 - Phone layout: rides drawer, compact stats with an expand toggle, tap the track to pin a point,
   finger scrubbing on the profile.
+- Trash: deleting is one tap with **Undo**; *Settings → Recently deleted* restores or erases;
+  erased automatically after 30 days.
 
 ## UI ideas (when the need shows up)
 

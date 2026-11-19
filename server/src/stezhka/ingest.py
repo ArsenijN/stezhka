@@ -17,6 +17,7 @@ from .process import PROCESSING_VERSION, ProcessedRide, process
 log = logging.getLogger(__name__)
 
 MAX_FILE_BYTES = 50 * 1024 * 1024
+TRASH_DAYS = 30  # a deleted ride can be restored this long, then it is erased with its GPX file
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,9 +98,14 @@ def import_bytes(
         if not allow_deleted:
             return ImportResult(0, created=False, skipped_deleted=True)
         conn.execute("DELETE FROM deleted_rides WHERE sha256 = ?", (sha,))
-    row = conn.execute("SELECT id FROM rides WHERE sha256 = ?", (sha,)).fetchone()
+    row = conn.execute("SELECT id, trashed_at FROM rides WHERE sha256 = ?", (sha,)).fetchone()
     if row:
-        return ImportResult(row["id"], created=False)
+        if row["trashed_at"] is None:
+            return ImportResult(row["id"], created=False)
+        if not allow_deleted:
+            return ImportResult(0, created=False, skipped_deleted=True)
+        restore_ride(conn, row["id"])  # uploading a trashed ride's file again brings it back
+        return ImportResult(row["id"], created=True)
 
     track = parse_gpx(data)
     pr = process(track)
@@ -116,8 +122,31 @@ def import_bytes(
     return ImportResult(ride_id, created=True)
 
 
+def trash_ride(conn: sqlite3.Connection, ride_id: int) -> bool:
+    """Move a ride to the trash: hidden everywhere, restorable for TRASH_DAYS. False if not found."""
+    cur = conn.execute("UPDATE rides SET trashed_at = ? WHERE id = ? AND trashed_at IS NULL", (time.time(), ride_id))
+    if cur.rowcount:
+        log.info("trashed ride %s", ride_id)
+    return cur.rowcount == 1
+
+
+def restore_ride(conn: sqlite3.Connection, ride_id: int) -> bool:
+    """Take a ride out of the trash. False if it is not in the trash."""
+    cur = conn.execute("UPDATE rides SET trashed_at = NULL WHERE id = ? AND trashed_at IS NOT NULL", (ride_id,))
+    if cur.rowcount:
+        log.info("restored ride %s", ride_id)
+    return cur.rowcount == 1
+
+
+def purge_trash(conn: sqlite3.Connection, raw_dir: Path, now: float | None = None) -> int:
+    """Erase rides that have been in the trash for TRASH_DAYS. Returns how many."""
+    cutoff = (now if now is not None else time.time()) - TRASH_DAYS * 86400
+    ids = [r["id"] for r in conn.execute("SELECT id FROM rides WHERE trashed_at < ?", (cutoff,))]
+    return sum(delete_ride(conn, raw_dir, i) for i in ids)
+
+
 def delete_ride(conn: sqlite3.Connection, raw_dir: Path, ride_id: int) -> bool:
-    """Delete a ride, its derived data and its raw file; remember the hash (see import_bytes)."""
+    """Erase a ride now: derived data and raw file; remember the hash (see import_bytes)."""
     row = conn.execute("SELECT sha256, raw_path FROM rides WHERE id = ?", (ride_id,)).fetchone()
     if not row:
         return False
@@ -232,3 +261,37 @@ class InboxWatcher:
         self._stop.set()
         if self._thread:
             self._thread.join(timeout=5)
+
+
+class TrashPurger:
+    """Background thread: purge_trash() at start and then every `interval_s`."""
+
+    def __init__(self, connect, raw_dir: Path, interval_s: float = 6 * 3600):
+        self._connect = connect
+        self._raw_dir = raw_dir
+        self._interval_s = interval_s
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            try:
+                conn = self._connect()
+                try:
+                    n = purge_trash(conn, self._raw_dir)
+                finally:
+                    conn.close()
+                if n:
+                    log.info("erased %d ride(s) from the trash", n)
+            except Exception:  # keep the thread alive; logged with traceback
+                log.exception("trash purge failed")
+            self._stop.wait(self._interval_s)
+
+    def start(self) -> None:
+        self._thread = threading.Thread(target=self._run, name="stezhka-trash", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=10)

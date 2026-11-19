@@ -13,7 +13,8 @@
     "save": "Save",
     "cancel": "Cancel",
     "settings": "Settings",
-    "close": "Close"
+    "close": "Close",
+    "undo": "Undo"
   },
   "settings": {
     "language": "Language",
@@ -41,7 +42,15 @@
     "key_unused": "never used",
     "no_keys": "No keys yet.",
     "revoke": "Revoke",
-    "revoke_confirm": "Revoke the key “{{name}}”? Uploads with it will stop working."
+    "revoke_confirm": "Revoke the key “{{name}}”? Uploads with it will stop working.",
+    "trash": "Recently deleted",
+    "trash_help_one": "Deleted rides stay here for {{count}} day, then they are erased together with their GPX file.",
+    "trash_help_other": "Deleted rides stay here for {{count}} days, then they are erased together with their GPX file.",
+    "trash_empty": "Nothing here.",
+    "restore": "Restore",
+    "erase": "Delete now",
+    "erase_on": "erased {{when}}",
+    "erase_confirm": "Erase this ride and its GPX file now? This cannot be undone."
   },
   "rides": {
     "title": "Rides",
@@ -53,7 +62,6 @@
     "filter_all": "All bikes",
     "filter_none": "No bike set",
     "filter_label": "Filter by bike",
-    "delete_confirm": "Delete this ride? Its GPX file is removed from the server, and the inbox will not import it again. Uploading the file yourself brings it back.",
     "deleted": "Ride deleted."
   },
   "stats": {

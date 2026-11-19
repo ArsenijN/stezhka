@@ -143,6 +143,8 @@ h1, h2 { margin: 0; }
   padding: 10px 14px; border-radius: 8px; background: var(--text); color: var(--bg); box-shadow: var(--shadow); z-index: 10;
 }
 .toast[data-kind="error"] { background: var(--danger); color: #fff; }
+.toast { display: flex; align-items: center; gap: 14px; }
+.toast-action { flex: none; border: 0; background: none; color: inherit; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; padding: 4px 2px; }
 
 /* ride actions, editing, compare */
 .btn.small { height: 28px; padding: 0 10px; font-size: 13px; }
@@ -178,6 +180,9 @@ h1, h2 { margin: 0; }
 .inline-form input { flex: 1 1 140px; }
 .stack-form { display: grid; gap: 6px; }
 .key-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.row-actions { display: flex; gap: 4px; flex: none; }
+.trash-item { display: grid; gap: 4px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.trash-item:last-child { border-bottom: 0; }
 .key-new input { font-family: ui-monospace, monospace; font-size: 12px; }
 
 /* phone: the page never scrolls; the map takes what the header, stats and profile leave, the ride

@@ -23,13 +23,25 @@ export function errorText(err) {
 }
 
 let toastTimer;
-export function toast(message, kind = 'info') {
+/** Short message at the bottom; with `action` ({label, run}) it carries a button, e.g. Undo. */
+export function toast(message, kind = 'info', { action = null, ms = 5000 } = {}) {
   const box = $('toast');
-  box.textContent = message;
+  const hide = () => { box.hidden = true; clearTimeout(toastTimer); };
+  box.replaceChildren(el('span', {}, message));
+  if (action) {
+    box.append(el('button', { type: 'button', class: 'toast-action', onclick: () => { hide(); action.run(); } }, action.label));
+  }
   box.dataset.kind = kind;
   box.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { box.hidden = true; }, 5000);
+  toastTimer = setTimeout(hide, ms);
+}
+
+// Recorders often name a track by its start time (OpenTracks: 2026-11-18T20:03+02); the date is
+// already shown, so such names are treated as untitled.
+export const TIMESTAMP_NAME = /^\d{4}-\d{2}-\d{2}[T ]\d{1,2}[:_]\d{2}/;
+export function rideTitle(r) {
+  return r.name && !TIMESTAMP_NAME.test(r.name) ? r.name : t('rides.untitled');
 }
 
 // Line icons (24x24, stroke = currentColor). Constant markup, never user data.

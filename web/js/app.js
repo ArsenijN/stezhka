@@ -6,7 +6,7 @@ import * as fmt from './format.js';
 import { RideMap, SPEED_STOPS } from './map.js';
 import { ProfileChart } from './chart.js';
 import { initSettings } from './settings.js';
-import { $, el, errorText, icon, iconButton, toast } from './ui.js';
+import { $, el, errorText, icon, iconButton, rideTitle, TIMESTAMP_NAME, toast } from './ui.js';
 
 const state = {
   rides: [],
@@ -78,13 +78,6 @@ async function onLogout() {
   try { await api('logout', { method: 'POST' }); } catch { /* session is gone either way */ }
   location.hash = '';
   showLogin(true);
-}
-
-// Recorders often name a track by its start time (OpenTracks: 2026-11-18T20:03+02); the date is
-// already shown, so such names are treated as untitled.
-const TIMESTAMP_NAME = /^\d{4}-\d{2}-\d{2}[T ]\d{1,2}[:_]\d{2}/;
-function rideTitle(r) {
-  return r.name && !TIMESTAMP_NAME.test(r.name) ? r.name : t('rides.untitled');
 }
 
 // --- ride list ----------------------------------------------------------------------------------
@@ -203,19 +196,32 @@ async function onSaveEdit(e) {
   }
 }
 
+// No "are you sure?": the ride goes to the trash, the toast offers Undo, and Settings lists
+// recently deleted rides for TRASH_DAYS (server side) before they are erased.
 async function onDelete() {
-  if (!confirm(t('rides.delete_confirm'))) return;
+  const id = state.ride.id;
   try {
-    await api(`rides/${state.ride.id}`, { method: 'DELETE' });
+    await api(`rides/${id}`, { method: 'DELETE' });
   } catch (ex) {
     toast(errorText(ex), 'error');
     return;
   }
-  toast(t('rides.deleted'));
   state.ride = null;
   state.compareId = null;
   await loadRides();
   location.hash = visibleRides()[0] ? `ride=${visibleRides()[0].id}` : '';
+  toast(t('rides.deleted'), 'info', { action: { label: t('actions.undo'), run: () => restoreRide(id) }, ms: 8000 });
+}
+
+async function restoreRide(id) {
+  try {
+    await api(`trash/${id}/restore`, { method: 'POST' });
+  } catch (ex) {
+    toast(errorText(ex), 'error');
+    return;
+  }
+  await loadRides();
+  location.hash = `ride=${id}`;
 }
 
 function compareRow(r) {
@@ -405,7 +411,10 @@ async function startApp() {
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setDrawer(false); });
     NARROW.addEventListener('change', () => setDrawer(false));
     $('bike-filter').addEventListener('change', (e) => { state.bikeFilter = e.target.value; renderRideList(); });
-    initSettings((bikes) => { state.bikes = bikes; renderBikeFilter(); renderRideList(); renderStats(); });
+    initSettings({
+      bikesChanged: (bikes) => { state.bikes = bikes; renderBikeFilter(); renderRideList(); renderStats(); },
+      rideRestored: (id) => restoreRide(id),
+    });
   }
   await Promise.all([loadRides(), loadBikes()]);
   const id = rideIdFromHash() ?? state.rides[0]?.id ?? null;

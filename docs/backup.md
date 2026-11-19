@@ -9,6 +9,10 @@ The basemap and DEM tiles are re-downloadable and are not backed up.
    newest `STEZHKA_BACKUP_KEEP` (default 14) in `/srv/stezhka/data/backups/`;
 2. a mirror of those snapshots and of `data/raw/` (the GPX originals) to `STEZHKA_BACKUP_DIR`.
 
+Deleting a ride in the app moves it to *Settings → Recently deleted* for 30 days; only then (or on
+"Delete now") are the ride and its GPX file erased, and the next night's mirror drops the file too.
+The database snapshots still hold the ride row for another 14 nights.
+
 It refuses to run if `STEZHKA_BACKUP_DIR` is on the same disk as the data: an unmounted network
 share leaves an empty folder on the local disk, and a "backup" there would be worthless.
 

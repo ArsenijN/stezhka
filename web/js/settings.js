@@ -1,12 +1,13 @@
-// Settings dialog: bikes and password.
+// Settings dialog: bikes, upload keys, recently deleted rides, language, password.
 import { api } from './api.js';
 import { t } from './i18n.js';
 import * as fmt from './format.js';
-import { $, el, errorText, toast } from './ui.js';
+import { $, el, errorText, rideTitle, toast } from './ui.js';
 
 export const BIKE_KINDS = ['mtb', 'trekking', 'gravel', 'road', 'city', 'other'];
 
 let onBikesChanged = () => {};
+let onRideRestored = () => {};
 
 function renderBikes(bikes) {
   const list = $('bike-list');
@@ -94,6 +95,37 @@ async function copyKey() {
   toast(t('settings.copied'));
 }
 
+function renderTrash({ rides, trash_days: days }) {
+  $('trash-help').textContent = t('settings.trash_help', { count: days });
+  const list = $('trash-list');
+  list.replaceChildren(...rides.map((r) => el('li', { class: 'trash-item' },
+    el('span', {}, el('strong', {}, rideTitle(r)), ' · ', fmt.rideDate(r.started_at), ' · ', fmt.distance(r.distance_m),
+      el('span', { class: 'muted' }, ' · ', t('settings.erase_on', { when: fmt.date(r.purge_at) }))),
+    el('span', { class: 'row-actions' },
+      el('button', { type: 'button', class: 'btn small', onclick: () => restore(r) }, t('settings.restore')),
+      el('button', { type: 'button', class: 'btn small danger', onclick: () => erase(r) }, t('settings.erase'))))));
+  if (!rides.length) list.append(el('li', { class: 'muted' }, t('settings.trash_empty')));
+}
+
+async function loadTrash() {
+  renderTrash(await api('trash'));
+}
+
+async function restore(r) {
+  $('settings').close();
+  onRideRestored(r.id);
+}
+
+async function erase(r) {
+  if (!confirm(t('settings.erase_confirm'))) return; // the one step that cannot be undone
+  try {
+    await api(`trash/${r.id}`, { method: 'DELETE' });
+    await loadTrash();
+  } catch (ex) {
+    toast(errorText(ex), 'error');
+  }
+}
+
 function fillKindSelect() {
   const sel = $('bike-kind');
   const current = sel.value;
@@ -101,14 +133,15 @@ function fillKindSelect() {
   sel.value = current;
 }
 
-export function initSettings(bikesChanged) {
+export function initSettings({ bikesChanged, rideRestored }) {
   onBikesChanged = bikesChanged;
+  onRideRestored = rideRestored;
   $('settings-open').addEventListener('click', async () => {
     fillKindSelect();
     renderBikes((await api('bikes')).bikes);
     $('key-new').hidden = true; // a new key is shown once, never again after closing
     $('key-value').value = '';
-    await loadKeys();
+    await Promise.all([loadKeys(), loadTrash()]);
     $('settings').showModal();
   });
   $('settings-close').addEventListener('click', () => $('settings').close());

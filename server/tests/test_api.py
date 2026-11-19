@@ -26,7 +26,7 @@ def login(client, cfg, password="correct horse"):
 
 
 def test_everything_requires_login(client):
-    for path in ("/api/rides", "/api/rides/1", "/api/rides/1/points", "/api/bikes", "/api/config"):
+    for path in ("/api/rides", "/api/rides/1", "/api/rides/1/points", "/api/bikes", "/api/config", "/api/trash"):
         r = client.get(path)
         assert r.status_code == 401 and r.json() == {"error": "unauthorized"}, path
     assert client.post("/api/rides", content=commute().gpx()).status_code == 401
@@ -116,26 +116,84 @@ def test_short_passwords_rejected(cfg):
         auth.set_password(connect(cfg.db_path), "short-pass")
 
 
-def test_delete_ride_tombstones_inbox_but_not_explicit_upload(client, cfg):
+def test_delete_moves_to_trash_and_undo_restores(client, cfg):
     from stezhka.ingest import import_bytes
 
     login(client, cfg)
     data = commute().gpx()
     rid = client.post("/api/rides", content=data).json()["id"]
-    raw_files = list(cfg.raw_dir.rglob("*.gpx"))
-    assert len(raw_files) == 1
-    assert client.delete(f"/api/rides/{rid}").json() == {"ok": True}
+    raw = list(cfg.raw_dir.rglob("*.gpx"))
+    assert len(raw) == 1
+    assert client.delete(f"/api/rides/{rid}").json() == {"ok": True, "trash_days": 30}
+    # gone from every view, but the GPX file stays while it is in the trash
     assert client.get(f"/api/rides/{rid}").status_code == 404
-    assert not raw_files[0].exists()  # the raw file is gone too
+    assert client.get(f"/api/rides/{rid}/points").status_code == 404
+    assert client.get("/api/rides").json()["rides"] == []
+    assert client.patch(f"/api/rides/{rid}", json={"notes": "x"}).status_code == 404
     assert client.delete(f"/api/rides/{rid}").json() == {"error": "not_found"}
+    assert raw[0].exists()
+    trash = client.get("/api/trash").json()
+    assert [r["id"] for r in trash["rides"]] == [rid] and trash["trash_days"] == 30
+    assert trash["rides"][0]["purge_at"] > trash["rides"][0]["trashed_at"]
+
+    # the inbox re-scanning its folder must not bring it back
+    res = import_bytes(connect(cfg.db_path), cfg.raw_dir, data, "inbox.gpx")
+    assert res.skipped_deleted and not res.created
+
+    assert client.post(f"/api/trash/{rid}/restore").json() == {"ok": True}
+    assert client.get(f"/api/rides/{rid}").status_code == 200
+    assert client.get("/api/trash").json()["rides"] == []
+    assert client.post(f"/api/trash/{rid}/restore").json() == {"error": "not_found"}
+
+
+def test_upload_restores_a_trashed_ride(client, cfg):
+    login(client, cfg)
+    data = commute().gpx()
+    rid = client.post("/api/rides", content=data).json()["id"]
+    client.delete(f"/api/rides/{rid}")
+    r = client.post("/api/rides", content=data)  # an explicit upload brings it back, same id
+    assert r.status_code == 201 and r.json() == {"id": rid, "created": True}
+    assert client.get(f"/api/rides/{rid}").status_code == 200
+
+
+def test_erase_from_trash_tombstones_inbox_but_not_explicit_upload(client, cfg):
+    from stezhka.ingest import import_bytes
+
+    login(client, cfg)
+    data = commute().gpx()
+    rid = client.post("/api/rides", content=data).json()["id"]
+    raw = list(cfg.raw_dir.rglob("*.gpx"))
+    # only rides in the trash can be erased
+    assert client.delete(f"/api/trash/{rid}").json() == {"error": "not_found"}
+    client.delete(f"/api/rides/{rid}")
+    assert client.delete(f"/api/trash/{rid}").json() == {"ok": True}
+    assert not raw[0].exists()
+    assert client.get("/api/trash").json()["rides"] == []
 
     conn = connect(cfg.db_path)
-    res = import_bytes(conn, cfg.raw_dir, data, "inbox.gpx")  # what the inbox watcher does
+    res = import_bytes(conn, cfg.raw_dir, data, "inbox.gpx")
     assert res.skipped_deleted and not res.created
     assert conn.execute("SELECT COUNT(*) FROM points").fetchone()[0] == 0
 
-    r = client.post("/api/rides", content=data)  # an explicit upload brings it back
+    r = client.post("/api/rides", content=data)
     assert r.status_code == 201 and r.json()["created"] is True
+
+
+def test_trash_is_purged_after_trash_days(client, cfg):
+    from stezhka.ingest import TRASH_DAYS, purge_trash
+
+    login(client, cfg)
+    keep = client.post("/api/rides", content=commute().gpx()).json()["id"]
+    old = client.post("/api/rides", content=commute().ride(30, 4.0).gpx()).json()["id"]
+    recent = client.post("/api/rides", content=commute().ride(40, 4.0).gpx()).json()["id"]
+    client.delete(f"/api/rides/{old}")
+    client.delete(f"/api/rides/{recent}")
+    conn = connect(cfg.db_path)
+    conn.execute("UPDATE rides SET trashed_at = trashed_at - ? WHERE id = ?", ((TRASH_DAYS + 1) * 86400, old))
+    assert purge_trash(conn, cfg.raw_dir) == 1
+    assert [r["id"] for r in client.get("/api/trash").json()["rides"]] == [recent]
+    assert [r["id"] for r in client.get("/api/rides").json()["rides"]] == [keep]
+    assert len(list(cfg.raw_dir.rglob("*.gpx"))) == 2
 
 
 def test_change_password(client, cfg):

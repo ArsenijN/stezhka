@@ -69,6 +69,10 @@ export function rideDate(unixSeconds) {
   return new Intl.DateTimeFormat(locale(), opts).format(d);
 }
 
+export function date(unixSeconds) {
+  return new Intl.DateTimeFormat(locale(), { dateStyle: 'medium' }).format(unixSeconds * 1000);
+}
+
 export function time(unixSeconds) {
   return new Intl.DateTimeFormat(locale(), { timeStyle: 'short' }).format(unixSeconds * 1000);
 }

@@ -28,7 +28,9 @@ from .db import connect
 from .gpx import GpxError
 from .dem import ATTRIBUTION as DEM_ATTRIBUTION
 from .enrich import EnrichWorker
-from .ingest import MAX_FILE_BYTES, InboxWatcher, delete_ride, import_bytes
+from .ingest import (
+    MAX_FILE_BYTES, TRASH_DAYS, InboxWatcher, TrashPurger, delete_ride, import_bytes, restore_ride, trash_ride,
+)
 from .weather import ATTRIBUTION as WEATHER_ATTRIBUTION
 
 log = logging.getLogger(__name__)
@@ -162,6 +164,8 @@ def create_app(cfg: Config) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         open_db().close()  # create/migrate the schema before serving
+        purger = TrashPurger(open_db, cfg.raw_dir)
+        purger.start()
         watcher = None
         if worker:
             worker.start()
@@ -174,6 +178,7 @@ def create_app(cfg: Config) -> FastAPI:
             watcher.stop()
         if worker:
             worker.stop()
+        purger.stop()
 
     app = FastAPI(title="Stezhka", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None)
     app.add_middleware(_SelectiveGZip)
@@ -323,7 +328,8 @@ def create_app(cfg: Config) -> FastAPI:
 
     def _ride(conn: sqlite3.Connection, ride_id: int) -> dict:
         row = conn.execute(
-            f"SELECT {_RIDE_COLUMNS} FROM rides r LEFT JOIN bikes b ON b.id = r.bike_id WHERE r.id = ?",
+            f"SELECT {_RIDE_COLUMNS} FROM rides r LEFT JOIN bikes b ON b.id = r.bike_id"
+            " WHERE r.id = ? AND r.trashed_at IS NULL",
             (ride_id,),
         ).fetchone()
         if not row:
@@ -333,7 +339,8 @@ def create_app(cfg: Config) -> FastAPI:
     @app.get("/api/rides")
     def list_rides(conn: sqlite3.Connection = Depends(require_auth)):
         rows = conn.execute(
-            f"SELECT {_RIDE_COLUMNS} FROM rides r LEFT JOIN bikes b ON b.id = r.bike_id ORDER BY r.started_at DESC"
+            f"SELECT {_RIDE_COLUMNS} FROM rides r LEFT JOIN bikes b ON b.id = r.bike_id"
+            " WHERE r.trashed_at IS NULL ORDER BY r.started_at DESC"
         ).fetchall()
         return {"rides": [dict(r) for r in rows]}
 
@@ -407,9 +414,33 @@ def create_app(cfg: Config) -> FastAPI:
             raise ApiError(404, ErrorCode.NOT_FOUND)
         return {"ok": True}
 
+    # Deleting moves a ride to the trash (undo right away, or restore later from Settings); it is
+    # erased with its GPX file after TRASH_DAYS, or at once via DELETE /api/trash/{id}.
     @app.delete("/api/rides/{ride_id}")
     def remove_ride(ride_id: int, conn: sqlite3.Connection = Depends(require_auth)):
-        if not delete_ride(conn, cfg.raw_dir, ride_id):
+        if not trash_ride(conn, ride_id):
+            raise ApiError(404, ErrorCode.NOT_FOUND)
+        return {"ok": True, "trash_days": TRASH_DAYS}
+
+    @app.get("/api/trash")
+    def list_trash(conn: sqlite3.Connection = Depends(require_auth)):
+        rows = conn.execute(
+            "SELECT id, name, started_at, distance_m, creator, trashed_at, trashed_at + ? AS purge_at"
+            " FROM rides WHERE trashed_at IS NOT NULL ORDER BY trashed_at DESC",
+            (TRASH_DAYS * 86400,),
+        ).fetchall()
+        return {"rides": [dict(r) for r in rows], "trash_days": TRASH_DAYS}
+
+    @app.post("/api/trash/{ride_id}/restore")
+    def restore_from_trash(ride_id: int, conn: sqlite3.Connection = Depends(require_auth)):
+        if not restore_ride(conn, ride_id):
+            raise ApiError(404, ErrorCode.NOT_FOUND)
+        return {"ok": True}
+
+    @app.delete("/api/trash/{ride_id}")
+    def erase_from_trash(ride_id: int, conn: sqlite3.Connection = Depends(require_auth)):
+        trashed = conn.execute("SELECT 1 FROM rides WHERE id = ? AND trashed_at IS NOT NULL", (ride_id,)).fetchone()
+        if not trashed or not delete_ride(conn, cfg.raw_dir, ride_id):
             raise ApiError(404, ErrorCode.NOT_FOUND)
         return {"ok": True}
 
