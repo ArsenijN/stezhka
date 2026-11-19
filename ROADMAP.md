@@ -21,6 +21,14 @@ Versions follow SemVer `0.y.z`: each milestone below bumps `y`.
 
 - **v0.4.1** Upload keys + iOS share-sheet Shortcut, Syncthing inbox setup, nightly backup and
   monthly map refresh timers.
+- Phone layout: rides drawer, compact stats with an expand toggle, tap the track to pin a point,
+  finger scrubbing on the profile.
+
+## UI ideas (when the need shows up)
+
+- **Quicker comparing**: on phones the compare picker sits in the expanded stats. If comparing
+  several rides in a row becomes common, move it to a chip on the map (pick, look, pick the next,
+  without opening and closing the stats each time).
 
 ## Next: v0.5 - roads and segments
 
