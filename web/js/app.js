@@ -722,6 +722,15 @@ async function startApp() {
     initSettings({
       bikesChanged: (bikes) => { state.bikes = bikes; renderBikeFilter(); renderRideList(); renderStats(); },
       rideRestored: (id) => restoreRide(id),
+      // the main recording of some trips changed: their ids in the list did too
+      recordingsChanged: async () => {
+        await loadRides();
+        if (state.ride && !state.rides.some((r) => r.id === state.ride.id)) {
+          const moved = state.rides.find((r) => r.started_at === state.ride.started_at)
+            ?? state.rides.find((r) => Math.abs(r.started_at - state.ride.started_at) < 600);
+          location.hash = moved ? `ride=${moved.id}` : '';
+        }
+      },
     });
   }
   await Promise.all([loadRides(), loadBikes()]);

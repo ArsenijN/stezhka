@@ -50,7 +50,12 @@
     "restore": "Restore",
     "erase": "Delete now",
     "erase_on": "erased {{when}}",
-    "erase_confirm": "Erase this ride and its GPX file now? This cannot be undone."
+    "erase_confirm": "Erase this ride and its GPX file now? This cannot be undone.",
+    "main_recording": "Main recording",
+    "main_recording_help": "When two phones record the same trip, the ride shows this app's recording; the other one stays available for comparing. “Make main” on a ride overrides this for that ride.",
+    "main_recording_auto": "Automatic (the most detailed recording)",
+    "main_recording_changed_one": "Updated {{count}} ride.",
+    "main_recording_changed_other": "Updated {{count}} rides."
   },
   "rides": {
     "title": "Rides",

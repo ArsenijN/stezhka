@@ -8,6 +8,7 @@ export const BIKE_KINDS = ['mtb', 'trekking', 'gravel', 'road', 'city', 'other']
 
 let onBikesChanged = () => {};
 let onRideRestored = () => {};
+let onRecordingsChanged = () => {};
 
 function renderBikes(bikes) {
   const list = $('bike-list');
@@ -95,6 +96,27 @@ async function copyKey() {
   toast(t('settings.copied'));
 }
 
+// Which app's recording leads a trip recorded by two phones. Shown once there is such a trip.
+async function loadRecorders() {
+  const { preferred, recorders } = await api('recorders');
+  $('recorder-section').hidden = recorders.length < 2 && !preferred;
+  const sel = $('recorder');
+  const names = preferred && !recorders.includes(preferred) ? [...recorders, preferred] : recorders;
+  sel.replaceChildren(el('option', { value: '' }, t('settings.main_recording_auto')),
+    ...names.map((n) => el('option', { value: n }, n)));
+  sel.value = preferred || '';
+}
+
+async function setRecorder() {
+  try {
+    const res = await api('recorders', { method: 'PUT', json: { preferred: $('recorder').value || null } });
+    toast(t('settings.main_recording_changed', { count: res.changed }));
+    if (res.changed) onRecordingsChanged();
+  } catch (ex) {
+    toast(errorText(ex), 'error');
+  }
+}
+
 function renderTrash({ rides, trash_days: days }) {
   $('trash-help').textContent = t('settings.trash_help', { count: days });
   const list = $('trash-list');
@@ -133,15 +155,17 @@ function fillKindSelect() {
   sel.value = current;
 }
 
-export function initSettings({ bikesChanged, rideRestored }) {
+export function initSettings({ bikesChanged, rideRestored, recordingsChanged }) {
   onBikesChanged = bikesChanged;
   onRideRestored = rideRestored;
+  onRecordingsChanged = recordingsChanged;
+  $('recorder').addEventListener('change', setRecorder);
   $('settings-open').addEventListener('click', async () => {
     fillKindSelect();
     renderBikes((await api('bikes')).bikes);
     $('key-new').hidden = true; // a new key is shown once, never again after closing
     $('key-value').value = '';
-    await Promise.all([loadKeys(), loadTrash()]);
+    await Promise.all([loadKeys(), loadTrash(), loadRecorders()]);
     $('settings').showModal();
   });
   $('settings-close').addEventListener('click', () => $('settings').close());

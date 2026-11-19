@@ -109,3 +109,33 @@ def test_trip_is_trashed_restored_and_erased_together(client, cfg):
     assert client.delete(f"/api/trash/{a}").json() == {"ok": True}
     assert list(cfg.raw_dir.rglob("*.gpx")) == []
     assert client.get("/api/trash").json()["rides"] == []
+
+
+
+def test_preferred_recorder(client, cfg):
+    a = upload(client, phone_a())  # denser: main by default
+    b = upload(client, phone_b())
+    conn = connect(cfg.db_path)
+    conn.execute("UPDATE rides SET creator = 'Open GPX Tracker for iOS' WHERE id = ?", (a,))
+    conn.execute("UPDATE rides SET creator = 'OpenTracks' WHERE id = ?", (b,))
+    assert client.get("/api/recorders").json() == {"preferred": None, "recorders": ["Open GPX Tracker for iOS", "OpenTracks"]}
+
+    assert client.put("/api/recorders", json={"preferred": "OpenTracks"}).json() == {"ok": True, "changed": 1}
+    assert listed(client) == [b]
+    # back to automatic: the denser one again
+    assert client.put("/api/recorders", json={"preferred": None}).json()["changed"] == 1
+    assert listed(client) == [a]
+
+    # "Make main" by hand wins over the setting
+    client.post(f"/api/rides/{b}/main")
+    assert client.put("/api/recorders", json={"preferred": "Open GPX Tracker for iOS"}).json()["changed"] == 0
+    assert listed(client) == [b]
+
+
+def test_preferred_recorder_applies_to_new_trips(client, cfg):
+    conn = connect(cfg.db_path)
+    client.put("/api/recorders", json={"preferred": "Phone B"})
+    b = upload(client, phone_b())
+    conn.execute("UPDATE rides SET creator = 'Phone B' WHERE id = ?", (b,))
+    upload(client, phone_a())  # denser, but not the preferred app
+    assert listed(client) == [b]

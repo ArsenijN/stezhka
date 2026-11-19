@@ -14,7 +14,7 @@ import math
 import re
 import sqlite3
 
-from .db import tx
+from .db import get_setting, set_setting, tx
 
 log = logging.getLogger(__name__)
 
@@ -73,13 +73,22 @@ def _make_main(conn: sqlite3.Connection, group: list[int], main_id: int) -> None
             conn.execute("UPDATE ride_marks SET ride_id = ? WHERE ride_id = ?", (main_id, rid))
 
 
+PREFERRED_KEY = "main_recorder"  # settings: the recording app whose recording is main, "" = automatic
+
+
+def preferred_recorder(conn: sqlite3.Connection) -> str | None:
+    return get_setting(conn, PREFERRED_KEY) or None
+
+
 def _best(conn: sqlite3.Connection, group: list[int]) -> int:
-    """Default main recording: the densest sampling (more fixes per second = more detail)."""
+    """Default main recording: the preferred app's (Settings), else the densest sampling (more fixes
+    per second = more detail; with both phones logging every second this is close to a coin toss,
+    hence the setting)."""
     marks = ",".join("?" * len(group))
     rows = conn.execute(
-        f"SELECT id, point_count * 1.0 / MAX(elapsed_s, 1) AS rate FROM rides WHERE id IN ({marks})"
-        " ORDER BY rate DESC, id",
-        group,
+        f"SELECT id, creator IS ? AS preferred, point_count * 1.0 / MAX(elapsed_s, 1) AS rate"
+        f" FROM rides WHERE id IN ({marks}) ORDER BY preferred DESC, rate DESC, id",
+        [preferred_recorder(conn), *group],
     ).fetchall()
     return rows[0]["id"]
 
@@ -152,12 +161,15 @@ def main_of(conn: sqlite3.Connection, ride_id: int) -> int | None:
     return None if row is None else (row[0] or ride_id)
 
 
-def set_main(conn: sqlite3.Connection, ride_id: int) -> bool:
-    """Make this recording the main ride of its group. False if the ride does not exist."""
+def set_main(conn: sqlite3.Connection, ride_id: int, *, chosen: bool = True) -> bool:
+    """Make this recording the main ride of its group (chosen: by the user, so the preferred-app
+    setting will not override it). False if the ride does not exist."""
     main = main_of(conn, ride_id)
     if main is None:
         return False
     with tx(conn):
+        conn.execute("UPDATE rides SET main_chosen = 0 WHERE id = ?", (main,))
+        conn.execute("UPDATE rides SET main_chosen = ? WHERE id = ?", (int(chosen), ride_id))
         # the user's name, notes and bike belong to the trip: move them to the new main recording
         if main != ride_id:
             conn.execute(
@@ -184,3 +196,30 @@ def split(conn: sqlite3.Connection, ride_id: int) -> bool:
         if row[0] is None:  # it was the main one: the best of the rest takes over
             _make_main(conn, rest, _best(conn, rest))
     return True
+
+
+def recorders(conn: sqlite3.Connection) -> list[str]:
+    """Recording apps seen in rides that are part of a group (the only ones the setting matters for)."""
+    rows = conn.execute(
+        "SELECT DISTINCT creator FROM rides r WHERE creator IS NOT NULL AND trashed_at IS NULL"
+        " AND (primary_id IS NOT NULL OR EXISTS (SELECT 1 FROM rides o WHERE o.primary_id = r.id))"
+        " ORDER BY creator"
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
+def set_preferred_recorder(conn: sqlite3.Connection, creator: str | None) -> int:
+    """Store the preference and re-pick the main recording of every trip the user has not picked
+    by hand. Returns how many trips changed."""
+    set_setting(conn, PREFERRED_KEY, creator or "")
+    changed = 0
+    mains = conn.execute(
+        "SELECT r.id FROM rides r WHERE r.primary_id IS NULL AND r.main_chosen = 0"
+        " AND EXISTS (SELECT 1 FROM rides o WHERE o.primary_id = r.id)"
+    ).fetchall()
+    for (main,) in mains:
+        best = _best(conn, _members(conn, main))
+        if best != main:
+            set_main(conn, best, chosen=False)
+            changed += 1
+    return changed

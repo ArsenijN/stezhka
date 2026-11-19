@@ -183,6 +183,10 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX ride_marks_ride ON ride_marks(ride_id, start_t);
     """,
+    # 8: the user picked this recording as main ("Make main"): the preferred-app setting leaves it be
+    """
+    ALTER TABLE rides ADD COLUMN main_chosen INTEGER NOT NULL DEFAULT 0;
+    """,
 ]
 
 

@@ -78,6 +78,10 @@ class RidePatch(BaseModel):
     feeling_tags: list[str] | None = Field(default=None, max_length=len(feelings.TAGS))
 
 
+class RecorderBody(BaseModel):
+    preferred: str | None = Field(default=None, max_length=200)
+
+
 class MarkBody(BaseModel):
     start_t: float
     end_t: float
@@ -538,6 +542,14 @@ def create_app(cfg: Config) -> FastAPI:
         return {"ok": True}
 
     # --- recordings of one trip ----------------------------------------------------------------
+
+    @app.get("/api/recorders")
+    def list_recorders(conn: sqlite3.Connection = Depends(require_auth)):
+        return {"preferred": recordings.preferred_recorder(conn), "recorders": recordings.recorders(conn)}
+
+    @app.put("/api/recorders")
+    def prefer_recorder(body: RecorderBody, conn: sqlite3.Connection = Depends(require_auth)):
+        return {"ok": True, "changed": recordings.set_preferred_recorder(conn, body.preferred or None)}
 
     @app.post("/api/rides/{ride_id}/main")
     def make_main(ride_id: int, conn: sqlite3.Connection = Depends(require_auth)):

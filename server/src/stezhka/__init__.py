@@ -1,3 +1,3 @@
 """Stezhka: ride statistics, per-segment speeds and exploration-aware routing."""
 
-__version__ = "0.4.4"
+__version__ = "0.4.5"
