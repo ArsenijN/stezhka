@@ -30,7 +30,8 @@
       <a class="brand" href="#"><img src="icon.svg" alt="" width="24" height="24"> Stezhka</a>
       <span class="spacer"></span>
       <label class="btn">
-        <input id="upload" type="file" accept=".gpx,application/gpx+xml" multiple class="visually-hidden">
+        <!-- no "accept" filter: iOS knows no GPX file type and greys every file out; the server validates -->
+        <input id="upload" type="file" multiple class="visually-hidden">
         <span data-i18n="actions.upload"></span>
       </label>
       <select id="lang" class="btn" data-i18n-attr="aria-label:settings.language"></select>
