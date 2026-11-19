@@ -34,12 +34,19 @@ when the PC is off):
 //<windows-pc>/<share>/stezhka  /mnt/cold-stezhka  cifs  credentials=/etc/smb-stezhka.cred,vers=3.0,uid=0,gid=0,file_mode=0600,dir_mode=0700,_netdev,nofail,x-systemd.automount  0  0
 ```
 
+On the Windows side, a new share is **read-only by default**: give the SMB user **Change** under
+Sharing → Advanced Sharing → Permissions and **Modify** under Security. Renaming or re-creating the
+share drops these, so check them again after such changes.
+
 ```sh
 sudo systemctl daemon-reload
-ls /mnt/cold-stezhka                       # triggers the mount
+# a new x-systemd.automount entry is only armed at boot: start it once by hand
+sudo systemctl start "$(systemd-escape -p --suffix=automount /mnt/cold-stezhka)"
+sudo ls /mnt/cold-stezhka                  # triggers the mount
+findmnt /mnt/cold-stezhka                  # must list a cifs line, not just autofs
 echo 'STEZHKA_BACKUP_DIR=/mnt/cold-stezhka' | sudo tee -a /etc/stezhka.env
 sudo systemctl start stezhka-backup        # run once now
-journalctl -u stezhka-backup -n 20         # "backup ok: N snapshots, M GPX files"
+sudo journalctl -u stezhka-backup -n 20    # "backup ok: N snapshots, M GPX files"
 ```
 
 If the Windows PC is asleep at 03:30 the run fails and is logged; the timer is persistent, so a
