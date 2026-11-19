@@ -43,3 +43,12 @@ def test_inbox_waits_for_stable_file_and_ignores_temp(tmp_path):
     assert len(res) == 1 and res[0].created
     assert w.scan_once() == []  # unchanged file is not re-read
     assert (inbox / "ride.gpx").exists()  # never moved: Syncthing would sync the deletion back
+
+
+def test_inbox_ignores_syncthing_internal_folders(tmp_path):
+    inbox = tmp_path / "inbox"
+    (inbox / ".stversions").mkdir(parents=True)
+    (inbox / ".stfolder").mkdir()
+    (inbox / ".stversions" / "old~20261118.gpx").write_bytes(commute().gpx())
+    w = InboxWatcher(lambda: connect(tmp_path / "db.sqlite3"), tmp_path / "raw", inbox)
+    assert w.scan_once() == [] and w.scan_once() == []

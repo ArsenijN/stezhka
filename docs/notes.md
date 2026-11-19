@@ -80,3 +80,47 @@ Personal bike ride statistics system: record rides on an Android phone, sync to 
 - Scaffold repo: `server/` (API + jobs), `web/`, `docs/`, `android/` (later).
 - Write a GPX importer + cleaning/stop-detection module with tests on a real OpenTracks export.
 - Minimal web page: list rides, show one track colored by speed with an elevation chart.
+
+---
+
+## Addendum (2026-11-17): interim recording and Health Connect
+
+Append to the existing notes. Does not replace anything above.
+
+### Interim recording setup (before the custom app exists)
+- **Poco C65**: OpenTracks, exporting GPX. Activity type: cycling.
+- **iPhone**: Open GPX Tracker (better GPS, has a barometer). Settings: location "Always" + precise, highest accuracy, fitness activity type, distance filter 5-10 m, check that auto-pause doesn't create gaps at stops.
+- Record some rides with **both phones at once** to measure how much the Poco's data differs and how much cleaning the pipeline needs. Name each ride with bike + weather until the app logs those itself.
+- Mount the phone with a clear sky view (handlebar or outer pocket, not the backpack). Wait ~30 s for a GPS lock before riding off.
+
+### Confirmed facts about the Poco C65
+- OpenTracks sensor screen shows **no barometer, no thermometer, no heart rate sensor**. Elevation must come from a DEM lookup (SRTM/Copernicus), as planned.
+- Battery: set OpenTracks to "No restrictions", allow location "all the time", enable autostart / lock in recents. Still the main reliability risk for the future app.
+
+### OpenTracks settings in use
+- Min distance between location records: **10 m** (5 m is an option; 1 m is not useful: GPS gives ~1 fix/s, and stops would produce jitter clusters that inflate distance and confuse stop detection).
+- Max distance / new segment every **200 m** (only splits on GPS dropouts, fine).
+- Idle threshold: **10 s**.
+- Sampling interval: 0 s (as fast as GPS provides).
+- GPS accuracy: currently ignores fixes worse than 50 m. **Plan: lower to ~20-25 m**; raise again if gaps appear under trees/between buildings.
+- Export: **GPX** as the primary format. KMZ only if photos attached to the track are wanted (e.g. photos of puddles/bad spots). The pipeline should consume GPX.
+
+### Heart rate and steps via Health Connect
+- Galaxy Fit3 data (steps, heart rate) syncs through Samsung Health into **Health Connect** on the Poco, and was confirmed readable there. OpenTracks itself cannot read the Fit3 (it only reads standard Bluetooth sensors).
+- Plan: optional enrichment step in the Android app. Request Health Connect permission to read heart rate (and steps), read records for the ride's start-end window after the ride, and merge into track points/segments by timestamp.
+- Heart rate use: show effort on the map/elevation graph (e.g. the climb to uni). Steps: help separate riding from walking (pushing the bike, sidewalks).
+- Limits:
+  - Fit3 has **no GPS**; the phone still records the route.
+  - Density is unknown. All-day tracking is probably sparse (hourly min/max visible in the UI; underlying samples unverified). For dense heart rate, start a **cycling workout on the Fit3** before the ride, then check what arrives in Health Connect.
+  - Data arrives when the watch syncs, so it may lag a few minutes after the ride.
+- First test (no code needed): one ride with the Fit3 cycling workout + OpenTracks running, then compare timestamps.
+
+### Additions to the data model / pipeline
+- Store the **source device** per ride (Poco/OpenTracks, iPhone/Open GPX Tracker) and per-ride metadata: bike, notes.
+- Importer must handle GPX from both apps. iPhone elevation may come from the barometer; still prefer DEM-derived elevation for consistency, but keep the raw value.
+- New enrichment stage: Health Connect heart rate/steps (optional, skipped if no data).
+
+### Added tasks for Claude Code
+- Importer test fixtures: one OpenTracks GPX and one Open GPX Tracker GPX from the same ride.
+- Compare the two tracks (point density, jitter, gaps, speed values) to tune cleaning thresholds.
+- Prototype Health Connect reader (Kotlin) that dumps heart rate samples for a time window to JSON; check sample density with and without a Fit3 workout.

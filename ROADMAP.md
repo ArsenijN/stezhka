@@ -33,27 +33,59 @@ Versions follow SemVer `0.y.z`: each milestone below bumps `y`.
 
 ## v0.6 - ETA
 
-- Pick or draw a route; ETA = Σ segment times from own medians (adjusted for wetness, time of day,
-  bike), with a confidence band from sample counts.
-- Unknown segments: model from OSM tags + slope, calibrated on known segments.
+The question is not "which way is shortest" but "which way is fastest *for me, today*". A short
+cut through narrow household streets, steep downhills and broken surface can lose to a slightly
+longer smooth road that lets you hold speed (the taxi-navigation failure in Uzhhorod: a
+generic router picks the short way no local takes). So the time model is built from what you
+actually ride, not from road class defaults:
+
+- Segment time = length / *your* sustained speed on it (median of matched passes), plus the time
+  you typically lose there to stops and slowdowns (signals, crossings, give-way junctions).
+- **Junction and turn costs** learned from the data: time lost entering, crossing or turning at a
+  node, so a route with many interruptions is penalised even if every piece is short.
+- **Conditions**: speeds split by road wetness (dirt paths and broken asphalt slow down a lot after
+  rain, good asphalt barely), by time of day (traffic, pedestrians), and by bike.
+- Unknown segments: estimated from OSM tags (surface, smoothness, class, crossings) + DEM slope,
+  calibrated on the segments you do know; low confidence until ridden.
+- ETA for a picked or drawn route with a confidence band from sample counts.
+- **Backtesting**: predict each past ride from the data before it, compare with the real time, and
+  report the error. This is how we know the model beats "shortest path".
 
 ## v0.7 - routing and exploration
 
-- Routing on the own graph; cost = predicted time × exploration factor; "explore level" 0-3.
+- Routing on the own graph with the v0.6 time model; "explore level" 0-3 adds a bonus for unknown
+  segments, so the map grows, but never sends you somewhere awful when level 0 ("I'm late").
+- Alternatives: fastest, short, and "the smooth way" side by side with ETAs, so a slightly longer
+  but faster road is visible as such.
+- Weather-aware: the same trip can route differently after rain (avoid paths that turn to mud).
 - Discovery loops: "about N minutes, as many new streets as possible" (orienteering heuristic).
 - Export route as GPX for navigation apps.
 - Puddle / bad-spot layer as a routing penalty.
 
 ## Recording
 
-- Recommended now: iPhone + Open GPX Tracker (1 s fixes, low noise). Poco + OpenTracks works on
-  the bar holder; set its recording distance interval to the minimum; avoid pockets.
+- Recommended now: iPhone + Open GPX Tracker (1 s fixes, low noise, keeps the small swerves
+  around obstacles). Poco + OpenTracks works on the bar holder; avoid pockets (measured: ~4.5 s
+  late, ~14 m off).
+- OpenTracks minimum distance between records: **5 m** rather than 10 m. Measured on paired rides,
+  10 m made Poco tracks 3-7 % shorter (corners cut). The worry about jitter clusters at stops does
+  not apply here: Stezhka adds no distance while stationary. Accuracy filter 20-25 m is fine (Poco
+  reported 2-3 m typical, 8 m worst on our rides).
+- Getting rides onto the server: [docs/syncthing.md](docs/syncthing.md) (Android: Syncthing-Fork;
+  iPhone: browser upload or Synctrain/Möbius Sync).
+- **Device upload tokens + iOS Shortcut**: a per-device token that may only upload, so "Share →
+  Send to Stezhka" works in one tap on the iPhone.
 - Own Android app only for what recorders cannot do: one-tap annotations (puddle, bad surface,
-  "on sidewalk"), live ETA. Prototype battery survival on the Poco C65 first.
+  "on sidewalk"), live ETA, and **Health Connect** heart rate and steps (Galaxy Fit3 via Samsung
+  Health), merged into the ride by timestamp: effort on the profile (e.g. the climb to uni), steps
+  to tell riding from pushing the bike. First: a Kotlin prototype that dumps heart-rate samples for a
+  time window to JSON, to check density with and without a Fit3 cycling workout. Prototype battery
+  survival on the Poco C65 first.
 
 ## Operations
 
-- Syncthing receive-only inbox on the server → `STEZHKA_INBOX` (then rides arrive automatically).
+- Syncthing inbox: `deploy/setup-inbox.sh` + [docs/syncthing.md](docs/syncthing.md); the watcher
+  ignores Syncthing's own `.stfolder` / `.stversions`.
 - Nightly backup to the SMB cold storage: `stezhka-admin backup` snapshot + `rsync` of `raw/`
   (systemd timer).
 - Monthly basemap refresh (`stezhka-admin basemap`), systemd timer.

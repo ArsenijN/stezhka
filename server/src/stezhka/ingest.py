@@ -192,6 +192,9 @@ class InboxWatcher:
         conn = self._connect()
         try:
             for p in sorted(self._inbox.rglob("*")):
+                # skip hidden trees: Syncthing's .stfolder / .stversions (old copies of files)
+                if any(part.startswith(".") for part in p.relative_to(self._inbox).parts[:-1]):
+                    continue
                 if not _is_candidate(p):
                     continue
                 st = p.stat()
