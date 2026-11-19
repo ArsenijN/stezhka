@@ -254,6 +254,13 @@ export class RideMap {
     });
   }
 
+  /** Glide to a track point, keeping the zoom (+/- then zoom into it, as they zoom around the centre). */
+  panToPoint(i) {
+    const d = this.points;
+    if (!d || i == null) return;
+    this.map.easeTo({ center: [d.lon[i], d.lat[i]], duration: 450 });
+  }
+
   /** Index of the track point within [i0, i1] closest to the mouse position. */
   _nearestIndex(i0, i1, lngLat) {
     const d = this.points;

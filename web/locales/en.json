@@ -62,7 +62,7 @@
   },
   "chart": {
     "elevation": "Elevation",
-    "aria": "Elevation and speed along the ride. Hover to see the position on the map."
+    "aria": "Elevation and speed along the ride. Hover to see the position on the map; click to centre the map there."
   },
   "map": {
     "no_basemap": "The background map is not installed. On the server run: stezhka basemap"

@@ -23,13 +23,20 @@ export class ProfileChart {
     this.data = null;
     this.cursor = null;
     this.hoverHandlers = new Set();
+    this.selectHandlers = new Set();
     new ResizeObserver(() => this.draw()).observe(canvas);
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => this.draw());
     canvas.addEventListener('pointermove', (e) => this._pointer(e));
     canvas.addEventListener('pointerleave', () => { this.setCursor(null); this._emit(null); });
+    // Click (or tap) = select that point; the app pans the map to it.
+    canvas.addEventListener('click', (e) => {
+      const i = this._indexAt(e);
+      if (i != null) for (const fn of this.selectHandlers) fn(i);
+    });
   }
 
   onHover(fn) { this.hoverHandlers.add(fn); }
+  onSelect(fn) { this.selectHandlers.add(fn); }
   _emit(i) { for (const fn of this.hoverHandlers) fn(i); }
 
   setData(pts) {
@@ -56,7 +63,15 @@ export class ProfileChart {
   }
 
   _pointer(e) {
-    if (!this.data) return;
+    const i = this._indexAt(e);
+    if (i == null) return;
+    this.setCursor(i);
+    this._emit(i);
+  }
+
+  /** Track point index under a pointer event (by ridden distance along the x axis). */
+  _indexAt(e) {
+    if (!this.data) return null;
     const { x0, x1 } = this._geom();
     const rect = this.canvas.getBoundingClientRect();
     const x = Math.min(Math.max(e.clientX - rect.left, x0), x1);
@@ -67,8 +82,7 @@ export class ProfileChart {
       const mid = (lo + hi) >> 1;
       if (d[mid] < target) lo = mid + 1; else hi = mid;
     }
-    this.setCursor(lo);
-    this._emit(lo);
+    return lo;
   }
 
   draw() {

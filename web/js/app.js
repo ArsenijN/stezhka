@@ -350,6 +350,7 @@ async function startApp() {
     state.chart = new ProfileChart($('chart'));
     state.chart.onHover((i) => state.map.setCursor(i));
     state.map.onHover((i) => state.chart.setCursor(i));
+    state.chart.onSelect((i) => { state.map.setCursor(i); state.map.panToPoint(i); });
     renderLegend();
     window.addEventListener('hashchange', () => selectRide(rideIdFromHash()));
     $('bike-filter').addEventListener('change', (e) => { state.bikeFilter = e.target.value; renderRideList(); });
