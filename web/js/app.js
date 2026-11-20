@@ -26,6 +26,7 @@ const state = {
   markMode: false, // waiting for a drag/tap on the profile
   draft: null, // mark being created or edited: {id|null, start_t, end_t, tags, note}
   roads: null, // ridden segments (/api/roads) while "My roads" is on
+  roadMarks: null, // marks of every ride placed on those roads (id -> mark)
 };
 
 // --- "My roads": ridden segments with typical speed -----------------------------------------------
@@ -46,21 +47,46 @@ async function setRoads(on) {
   try { localStorage.setItem('stezhka.roads', on ? '1' : '0'); } catch { /* not essential */ }
   if (!on) {
     state.roads = null;
+    state.roadMarks = null;
     state.map.showRoads(null);
+    state.map.showRoadMarks(null);
     return;
   }
+  await loadRoads(false);
+}
+
+/** (Re)load "My roads"; `quiet` after an edit elsewhere: no toasts, no zooming. */
+async function loadRoads(quiet) {
   let res;
   try {
     res = await api('roads');
   } catch (ex) {
-    toast(errorText(ex), 'error');
+    if (!quiet) toast(errorText(ex), 'error');
     return;
   }
-  if (!res.available) toast(t('roads.no_basemap'));
-  else if (!res.segments.length) toast(res.pending ? t('roads.pending') : t('roads.none'));
+  if ($('roads-toggle').getAttribute('aria-pressed') !== 'true') return; // switched off meanwhile
+  if (!quiet && !res.available) toast(t('roads.no_basemap'));
+  else if (!quiet && !res.segments.length) toast(res.pending ? t('roads.pending') : t('roads.none'));
   state.roads = new Map(res.segments.map((s) => [s.id, s]));
+  state.roadMarks = new Map(res.marks.map((m) => [m.id, m]));
   state.map.showRoads(res.segments);
-  if (!state.ride) state.map.fitRoads(res.segments);
+  state.map.showRoadMarks(res.marks);
+  if (!quiet && !state.ride) state.map.fitRoads(res.segments);
+}
+
+function markSummary(m) {
+  return m.tags.length ? m.tags.map((tg) => t(`tag.${tg}`)).join(', ') : t('marks.no_tags');
+}
+
+/** Marks under a tap on "My roads": what, the note, which ride (tap to open it). */
+function roadMarksPopup(ids, lngLat) {
+  const list = ids.map((id) => state.roadMarks?.get(id)).filter(Boolean)
+    .sort((a, b) => b.ride_started_at - a.ride_started_at);
+  if (!list.length) return;
+  state.map.popup(lngLat, el('div', { class: 'road-popup' }, ...list.map((m) => el('div', { class: `road-mark ${markKind(m.tags)}` },
+    el('strong', {}, markSummary(m)),
+    m.note ? el('div', {}, m.note) : null,
+    el('a', { href: `#ride=${m.ride_id}`, class: 'muted' }, fmt.rideDate(m.ride_started_at))))));
 }
 
 function roadPopup(id, lngLat) {
@@ -73,7 +99,19 @@ function roadPopup(id, lngLat) {
     s.speed_mps != null ? line(t('roads.typical', { speed: fmt.speed(s.speed_mps) })) : line(t('roads.no_speed')),
     s.best_mps != null && s.passes > 1 ? line(t('roads.best', { speed: fmt.speed(s.best_mps) })) : null,
     line(t('roads.last', { when: fmt.date(s.last_t) })),
+    roadMarkCounts(id),
     el('div', { class: 'muted' }, fmt.distance(s.length_m), s.surface ? ` · ${s.surface === 'unpaved' ? t('roads.unpaved') : t('roads.paved')}` : '')));
+}
+
+/** "2 marks: puddles ×2, traffic" for a segment, or nothing. */
+function roadMarkCounts(segmentId) {
+  const on = [...(state.roadMarks?.values() || [])].filter((m) => m.segments.includes(segmentId));
+  if (!on.length) return null;
+  const counts = new Map();
+  for (const m of on) for (const tg of m.tags.length ? m.tags : ['']) counts.set(tg, (counts.get(tg) || 0) + 1);
+  const parts = [...counts].map(([tg, n]) => `${tg ? t(`tag.${tg}`) : t('marks.no_tags')}${n > 1 ? ` ×${n}` : ''}`);
+  const kind = on.some((m) => markKind(m.tags) === 'bad') ? 'bad' : on.some((m) => markKind(m.tags) === 'good') ? 'good' : 'note';
+  return el('div', { class: `road-mark ${kind}` }, t('roads.marks', { count: on.length }), ': ', parts.join(', '));
 }
 
 const FEELING_EMOJI = { 1: '👍', 0: '😐', '-1': '👎' };
@@ -484,6 +522,7 @@ async function saveMark(e) {
     return;
   }
   await refreshRide();
+  if (state.roads) loadRoads(true);
 }
 
 async function deleteMark(m) {
@@ -495,9 +534,11 @@ async function deleteMark(m) {
   }
   const rideId = state.ride.id;
   await refreshRide();
+  if (state.roads) loadRoads(true);
   toast(t('marks.deleted'), 'info', { ms: 8000, action: { label: t('actions.undo'), run: async () => {
     await api(`rides/${rideId}/marks`, { method: 'POST', json: { start_t: m.start_t, end_t: m.end_t, tags: m.tags, note: m.note } });
     if (state.ride?.id === rideId) await refreshRide();
+    if (state.roads) loadRoads(true);
   } } });
 }
 
@@ -685,6 +726,7 @@ async function selectRide(id) {
   state.markMode = false;
   state.draft = null;
   if (state.compareId === id) state.compareId = null;
+  state.map.hideRoadMarksOf(id || null);
   if (!id) {
     // nothing selected (the logo): an empty map, or all of "My roads" when that layer is on
     state.ride = null;
@@ -766,6 +808,7 @@ async function startApp() {
     // tapping the track pins that point too; the map is already looking at it, so no pan
     state.map.onSelect((i) => { state.map.setPinned(i); state.chart.setPinned(i); });
     state.map.onRoadClick(roadPopup);
+    state.map.onRoadMarkClick(roadMarksPopup);
     $('roads-toggle').addEventListener('click', () => setRoads($('roads-toggle').getAttribute('aria-pressed') !== 'true'));
     try { if (localStorage.getItem('stezhka.roads') === '1') setRoads(true); } catch { /* storage blocked */ }
     renderLegend();

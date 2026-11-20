@@ -8,7 +8,7 @@
 import * as maplibregl from '../vendor/maplibre-gl/maplibre-gl.mjs';
 import { t } from './i18n.js';
 import * as fmt from './format.js';
-import { MARK_COLORS } from './feelings.js';
+import { MARK_COLORS, markKind } from './feelings.js';
 
 // km/h -> colour. Shared with the legend. Dark red (crawling) to violet (fast descent).
 export const SPEED_STOPS = [
@@ -88,7 +88,10 @@ export class RideMap {
     this.compare = EMPTY;
     this.marks = EMPTY;
     this.roads = EMPTY;
+    this.roadmarks = EMPTY;
+    this.hiddenMarksRide = -1; // the selected ride: its own marks are drawn from the ride, not twice
     this.roadClickHandlers = new Set();
+    this.roadMarkClickHandlers = new Set();
     this.points = null;
     this.hoverHandlers = new Set();
     this.selectHandlers = new Set();
@@ -153,6 +156,7 @@ export class RideMap {
     m.addSource('compare', { type: 'geojson', data: this.compare });
     m.addSource('marks', { type: 'geojson', data: this.marks, tolerance: 0 });
     m.addSource('roads', { type: 'geojson', data: this.roads, tolerance: 0 });
+    m.addSource('roadmarks', { type: 'geojson', data: this.roadmarks, tolerance: 0 });
     // "My roads": every ridden segment, coloured by typical speed, thicker when ridden more often
     const ridden = ['min', ['get', 'rides'], 8];
     m.addLayer({
@@ -165,6 +169,12 @@ export class RideMap {
       },
     });
     const markColor = ['match', ['get', 'kind'], 'bad', MARK_COLORS.bad, 'good', MARK_COLORS.good, 'draft', MARK_COLORS.draft, MARK_COLORS.note];
+    // marks of every ride on "My roads": a halo along the road, problems drawn on top of good things
+    m.addLayer({
+      id: 'roadmarks-line', type: 'line', source: 'roadmarks', filter: this._roadMarksFilter('LineString'),
+      layout: { 'line-join': 'round', 'line-cap': 'round', 'line-sort-key': ['match', ['get', 'kind'], 'bad', 2, 'good', 1, 0] },
+      paint: { 'line-color': markColor, 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 7, 17, 18], 'line-opacity': 0.35 },
+    });
     // marked stretches: a wide halo under the track
     m.addLayer({
       id: 'marks-line', type: 'line', source: 'marks', filter: ['==', ['geometry-type'], 'LineString'],
@@ -211,6 +221,10 @@ export class RideMap {
       paint: { 'circle-radius': 9, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': markColor, 'circle-stroke-width': 4 },
     });
     m.addLayer({
+      id: 'roadmarks-spot', type: 'circle', source: 'roadmarks', filter: this._roadMarksFilter('Point'),
+      paint: { 'circle-radius': 7, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': markColor, 'circle-stroke-width': 3, 'circle-stroke-opacity': 0.8 },
+    });
+    m.addLayer({
       id: 'cursor', type: 'circle', source: 'cursor',
       paint: { 'circle-radius': 7, 'circle-color': '#fff', 'circle-stroke-color': '#111', 'circle-stroke-width': 3 },
     });
@@ -248,7 +262,7 @@ export class RideMap {
     m.on('mouseenter', 'stops', () => { m.getCanvas().style.cursor = 'pointer'; });
     m.on('click', 'roads', (e) => {
       // a mark or a stop under the finger has its own popup: one popup per tap
-      if (m.queryRenderedFeatures(e.point, { layers: ['marks-line', 'marks-spot', 'stops'] }).length) return;
+      if (m.queryRenderedFeatures(e.point, { layers: ['marks-line', 'marks-spot', 'roadmarks-line', 'roadmarks-spot', 'stops'] }).length) return;
       const p = e.features?.[0]?.properties;
       if (p) for (const fn of this.roadClickHandlers) fn(p.id, e.lngLat);
     });
@@ -274,6 +288,23 @@ export class RideMap {
       });
     }
     m.on('mouseleave', 'stops', () => { m.getCanvas().style.cursor = ''; });
+    // one popup per tap: every road mark under the finger (several rides can mark one place)
+    m.on('click', (e) => {
+      if (!m.getLayer('roadmarks-line')) return;
+      if (m.queryRenderedFeatures(e.point, { layers: ['marks-line', 'marks-spot', 'stops'] }).length) return;
+      const hits = m.queryRenderedFeatures(e.point, { layers: ['roadmarks-spot', 'roadmarks-line'] });
+      const ids = [...new Set(hits.map((f) => f.properties.id))];
+      if (ids.length) for (const fn of this.roadMarkClickHandlers) fn(ids, e.lngLat);
+    });
+    for (const layer of ['roadmarks-line', 'roadmarks-spot']) {
+      m.on('mouseenter', layer, () => { m.getCanvas().style.cursor = 'pointer'; });
+      m.on('mouseleave', layer, () => { m.getCanvas().style.cursor = ''; });
+    }
+  }
+
+  _roadMarksFilter(type) {
+    const geom = type === 'Point' ? ['==', ['geometry-type'], 'Point'] : ['in', ['geometry-type'], ['literal', ['LineString', 'MultiLineString']]];
+    return ['all', geom, ['!=', ['get', 'ride_id'], this.hiddenMarksRide]];
   }
 
   onHover(fn) { this.hoverHandlers.add(fn); }
@@ -337,6 +368,27 @@ export class RideMap {
   }
 
   onRoadClick(fn) { this.roadClickHandlers.add(fn); }
+  onRoadMarkClick(fn) { this.roadMarkClickHandlers.add(fn); }
+
+  /** Marks of every ride placed on the roads (/api/roads `marks`), or null to hide them. */
+  showRoadMarks(marks) {
+    this._setData('roadmarks', !marks ? EMPTY : {
+      type: 'FeatureCollection',
+      features: marks.map((mk) => ({
+        type: 'Feature',
+        properties: { id: mk.id, ride_id: mk.ride_id, kind: markKind(mk.tags) },
+        geometry: mk.geom,
+      })),
+    });
+  }
+
+  /** Leave out one ride's road marks (the selected ride shows its own); null shows all. */
+  hideRoadMarksOf(rideId) {
+    this.hiddenMarksRide = rideId ?? -1;
+    for (const [id, type] of [['roadmarks-line', 'LineString'], ['roadmarks-spot', 'Point']]) {
+      if (this.map.getLayer(id)) this.map.setFilter(id, this._roadMarksFilter(type));
+    }
+  }
 
   /** No ride selected: remove its track, stops, marks, cursor and comparison. */
   clearRide() {

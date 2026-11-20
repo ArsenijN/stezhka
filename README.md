@@ -6,8 +6,11 @@ Self-hosted ride statistics for cyclists: record rides on your phone, keep them 
 server, see where you are fast or slow, and (soon) learn per-road-segment speeds, predict ETA,
 and get routes that mix known fast roads with paths you have never ridden.
 
-Status: **v0.4** - import (OpenTracks, Open GPX Tracker, any GPX), stop detection, self-hosted
-map, terrain elevation, weather, bikes, ride comparison. What comes next: [ROADMAP.md](ROADMAP.md).
+Status: **v0.5.6** - import (OpenTracks, Open GPX Tracker, any GPX), stop detection, self-hosted
+map, terrain elevation, weather, bikes, ride comparison, two phones on one trip, how a ride felt
+with marked spots, trash with undo, GPX export, and *My roads*: every ride matched to the road
+network with typical and best speed per segment and everyone's marks on the roads. Done and next:
+[ROADMAP.md](ROADMAP.md).
 Why things are built this way: [docs/decisions.md](docs/decisions.md).
 
 ## Layout
@@ -21,16 +24,37 @@ docs/     design notes and decisions
 
 ## Development
 
+Once:
+
 ```sh
 python3 -m venv ~/.venvs/stezhka            # outside the repo: exFAT/NTFS (fuseblk) drives break venv symlinks
 ~/.venvs/stezhka/bin/pip install -e 'server[dev]'
 cd server && ~/.venvs/stezhka/bin/pytest
-
-export STEZHKA_DATA_DIR=$PWD/../data STEZHKA_COOKIE_SECURE=0
-~/.venvs/stezhka/bin/stezhka set-password
-~/.venvs/stezhka/bin/stezhka import ~/Downloads/*.gpx
-~/.venvs/stezhka/bin/stezhka serve          # http://127.0.0.1:8470
 ```
+
+Running a local server (from the repo root; `data/` is gitignored):
+
+```sh
+export STEZHKA_DATA_DIR=$PWD/data/dev STEZHKA_COOKIE_SECURE=0   # plain http on localhost
+export STEZHKA_ENRICH=0                     # optional: no elevation/weather downloads
+~/.venvs/stezhka/bin/stezhka set-password   # once per data dir (12+ characters)
+~/.venvs/stezhka/bin/stezhka basemap        # once: the map and the road network for *My roads*
+~/.venvs/stezhka/bin/stezhka import ~/Downloads/*.gpx   # or upload in the UI / unzip an export
+~/.venvs/stezhka/bin/stezhka serve          # http://127.0.0.1:8470 (STEZHKA_PORT to change)
+```
+
+The web UI is served straight from `web/`, so a browser reload picks up front-end edits; Python
+changes need a restart of `serve`. On start the server updates the database schema, reprocesses
+rides made by an older algorithm and matches rides to the roads in the background. To work on
+your real rides, use *Settings → Export → Download all rides (.zip)* from the server and import the zip's GPX
+files. All settings are listed in `server/src/stezhka/config.py`.
+
+## Versions and releases
+
+[SemVer](https://semver.org) `0.y.z`: `y` for each roadmap milestone, `z` for fixes and smaller
+additions. The version lives in `server/pyproject.toml` and `server/src/stezhka/__init__.py`
+(shown on hover over the source-code link); each release is an annotated tag `vX.Y.Z`. What each version
+brought: [ROADMAP.md](ROADMAP.md).
 
 ## Recording
 
@@ -66,7 +90,7 @@ After import, rides are enriched in the background (CLI: inline after `stezhka i
 
 * **Elevation** from the Copernicus GLO-30 terrain model (AWS Open Data). Tiles of ~45 MB are
   downloaded on first use into `$STEZHKA_DATA_DIR/dem/`. It is a surface model: in forests it reads
-  treetop height, and bridges dip to water level until map matching lands.
+  treetop height, and bridges still dip to water level (interpolation along bridges is planned).
 * **Weather** from [Open-Meteo](https://open-meteo.com): temperature, wind (with the head/tailwind
   component along your track), rain during and before the ride, and a road-wetness estimate.
   Only a ~10 km grid cell and the date leave the server, never the track.

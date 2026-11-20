@@ -1,5 +1,6 @@
 """Road network from vector tiles, map matching, and per-segment statistics (synthetic data)."""
 
+import json
 import math
 import random
 
@@ -277,3 +278,36 @@ def test_short_pieces_take_their_speed_from_the_ride_around_them(tmp_path):
     )
     tiny = next(s for s in segments.road_stats(conn) if s["id"] == "tiny")
     assert 4.5 < tiny["speed_mps"] < 6.5
+
+
+def test_marks_are_placed_on_the_ridden_segments(tmp_path):
+    from stezhka import feelings
+    from stezhka.ingest import import_bytes
+    from synth import commute
+
+    conn = connect(tmp_path / "db.sqlite3")
+    rid = import_bytes(conn, tmp_path / "raw", commute().gpx(), "a.gpx").ride_id
+    t0 = conn.execute("SELECT MIN(t) FROM points WHERE ride_id = ?", (rid,)).fetchone()[0]
+    # a 40 m segment due east, ridden backwards (from_off 40 -> to_off 0) in 8 s
+    geom = [[22.0, 48.6], [22.0 + 40 / (111_320 * math.cos(math.radians(48.6))), 48.6]]
+    conn.execute("INSERT INTO road_segments(id, class, length_m, geom) VALUES ('a', 'minor', 40, ?)", (json.dumps(geom),))
+    conn.execute(
+        "INSERT INTO ride_segments(ride_id, seq, segment_id, enter_t, exit_t, from_off, to_off, dist_m)"
+        " VALUES (?, 0, 'a', ?, ?, 40, 0, 40)", (rid, t0, t0 + 8),
+    )
+    stretch = feelings.add_mark(conn, rid, t0 + 2, t0 + 6, ["puddles"], "deep one")  # metres 30..10
+    spot = feelings.add_mark(conn, rid, t0 + 4, t0 + 4, [], None)  # metre 20
+    off_road = feelings.add_mark(conn, rid, t0 + 100, t0 + 130, ["traffic"], None)  # no pass there
+    marks = {m["id"]: m for m in segments.road_marks(conn)}
+
+    (line,) = marks[stretch]["geom"]["coordinates"]
+    lon_m = 111_320 * math.cos(math.radians(48.6))
+    assert abs((line[0][0] - 22.0) * lon_m - 10) < 0.5 and abs((line[-1][0] - 22.0) * lon_m - 30) < 0.5
+    assert marks[stretch]["segments"] == ["a"] and marks[stretch]["tags"] == ["puddles"]
+    assert marks[stretch]["note"] == "deep one" and marks[stretch]["ride_id"] == rid
+    assert marks[spot]["geom"]["type"] == "Point" and abs((marks[spot]["geom"]["coordinates"][0] - 22.0) * lon_m - 20) < 0.5
+    # off the network: the recorded track, and no segment
+    assert marks[off_road]["segments"] == [] and marks[off_road]["geom"]["type"] == "MultiLineString"
+    # a trashed ride's marks leave the map
+    conn.execute("UPDATE rides SET trashed_at = 1 WHERE id = ?", (rid,))
+    assert segments.road_marks(conn) == []

@@ -607,6 +607,7 @@ def create_app(cfg: Config) -> FastAPI:
         ).fetchone()[0]
         return {
             "segments": segments.road_stats(conn),
+            "marks": segments.road_marks(conn),
             "pending": pending,
             "available": segments.basemap_file(cfg.basemap_dir).is_file(),
         }

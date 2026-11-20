@@ -2,7 +2,8 @@
 
 What is done, what comes next, and what is known to be wrong. The *why* behind each choice lives in
 [docs/decisions.md](docs/decisions.md); the original brainstorm in [docs/notes.md](docs/notes.md).
-Versions follow SemVer `0.y.z`: each milestone below bumps `y`.
+Versions follow SemVer `0.y.z`: each milestone below bumps `y`; fixes and smaller additions bump
+`z`. Every release is an annotated git tag `vX.Y.Z`.
 
 ## Done
 
@@ -46,8 +47,7 @@ Done in **v0.5.0**: road network from the basemap tiles (D11), HMM map matching 
 the background (`stezhka match` by hand), ridden segments with passes, typical (median) and best
 speed; *My roads* map layer (colour = typical speed, width = how often).
 
-Next:
-- Per-ride view of its segments: where this ride was slower/faster than usual.
+Since then:
 - v0.5.1: sidewalks reachable without a mapped link, impossible speeds rejected, standing fixes
   ignored, duplicate exports of one recording trashed automatically. Sidewalks stay separate.
 - v0.5.2: going into a side path and back out no longer counts as riding it (it doubled the
@@ -56,7 +56,14 @@ Next:
 - v0.5.3: GPS-dropout cleaning (settling after gaps, acceleration gate); original GPX download and
   zip export. v0.5.4: the main recording of a trip is the better-quality one (coverage, GPS jumps);
   the preferred app only breaks ties - iOS throttled Open GPX Tracker on some rides.
-- Marks (v0.4.4) attached to the matched segments, shown on *My roads*.
+- v0.5.5: a phone started mid-ride is linked but never main (quality measured over the whole trip);
+  the logo clears the ride and shows only *My roads*.
+- v0.5.6: marks of every ride placed on the matched road segments and shown on *My roads* (red =
+  problems, green = good things, blue = notes); tap one for the reasons, note and ride; the road
+  popup counts the marks on it. Rides not matched yet show the mark on the recorded track.
+
+Next:
+- Per-ride view of its segments: where this ride was slower/faster than usual.
 - Statistics split by wetness, time of day, bike; spread and sample count in the popup.
 - Junction costs: time lost at each junction / crossing (stops already detected).
 - Stop reasons from OSM within ~20 m: traffic signals, crossings, junctions; otherwise "unknown".

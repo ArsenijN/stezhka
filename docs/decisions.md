@@ -131,6 +131,11 @@ near home). Sidewalks stay separate segments in the statistics: the user's sidew
 slowdowns (pedestrians, puddles) than the road, so merging them would blur both.
 Two-phone agreement on identical segments: 90 % and 78 %; 52 % on the pair with the chest-pocket
 phone that lags ~14 m (it sits between road and sidewalk; it is not the main recording).
+Marks on roads (v0.5.6) are placed when *My roads* is requested, not stored per segment: a mark
+keeps its time range, and the ride's passes say which segments and offsets that time covered. So
+marks follow every re-match and basemap refresh with no migration, and a mark made before its ride
+was matched simply lands later. Placed on the road line, not the raw track: marks from several
+rides on one street overlap instead of fanning out with GPS noise.
 
 ## Roadmap
 Moved to [ROADMAP.md](../ROADMAP.md).

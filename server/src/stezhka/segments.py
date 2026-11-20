@@ -17,7 +17,7 @@ import statistics
 import threading
 from pathlib import Path
 
-from . import mvt
+from . import feelings, mvt
 from .db import get_setting, set_setting, tx
 from .matching import MATCH_VERSION, Points, match, segment_geometry
 from .roads import EXTENT, ZOOM, RoadSource, Segment
@@ -240,6 +240,107 @@ def road_stats(conn: sqlite3.Connection) -> list[dict]:
             "speed_mps": round(statistics.median(sp), 2) if sp else None,
             "best_mps": round(max(sp), 2) if sp else None,
             "geom": json.loads(s["geom"]),
+        })
+    return out
+
+
+MARK_PASS_SLACK_S = 3.0  # a spot between two passes takes the nearest one this close in time
+
+
+def _slice(geom: list[list[float]], length_m: float, a: float, b: float) -> list[list[float]]:
+    """The part of a segment's lon/lat line between `a` and `b` metres from its start (either order).
+
+    Offsets are in the matcher's metres (seg.length_m); the stored line is measured again here and
+    scaled to that length, so the cut lands where the matcher meant it.
+    """
+    a, b = sorted((max(0.0, min(a, length_m)), max(0.0, min(b, length_m))))
+    k = math.cos(math.radians(geom[0][1]))
+    cum = [0.0]
+    for (x0, y0), (x1, y1) in zip(geom, geom[1:]):
+        cum.append(cum[-1] + math.hypot((x1 - x0) * k, y1 - y0) * 111_320)
+    scale = cum[-1] / length_m if length_m > 0 and cum[-1] > 0 else 1.0
+    a, b = a * scale, b * scale
+
+    def at(d: float) -> list[float]:
+        for i in range(1, len(cum)):
+            if d <= cum[i] or i == len(cum) - 1:
+                f = 0.0 if cum[i] == cum[i - 1] else (d - cum[i - 1]) / (cum[i] - cum[i - 1])
+                f = max(0.0, min(1.0, f))
+                (x0, y0), (x1, y1) = geom[i - 1], geom[i]
+                return [round(x0 + f * (x1 - x0), 6), round(y0 + f * (y1 - y0), 6)]
+        return list(geom[0])
+
+    out = [at(a)] + [list(geom[i]) for i in range(len(cum)) if a < cum[i] < b] + [at(b)]
+    return out
+
+
+def road_marks(conn: sqlite3.Connection) -> list[dict]:
+    """Every mark of a non-trashed main recording, placed on the road segments its ride was matched to.
+
+    A stretch becomes the pieces of each pass it overlaps (the time inside a pass is mapped linearly
+    onto the pass's offsets); a spot becomes the point on the pass it falls in. A ride that is not
+    matched (yet), or a mark off the road network, keeps the recorded track instead.
+    """
+    rows = conn.execute(
+        """
+        SELECT m.id, m.ride_id, m.start_t, m.end_t, m.start_lat, m.start_lon, m.tags, m.note, r.started_at
+        FROM ride_marks m JOIN rides r ON r.id = m.ride_id AND r.primary_id IS NULL AND r.trashed_at IS NULL
+        ORDER BY m.ride_id, m.start_t
+        """
+    ).fetchall()
+    out = []
+    geoms: dict[str, tuple[list, float]] = {}
+    for m in rows:
+        spot = m["end_t"] - m["start_t"] < 0.5
+        lo = m["start_t"] - (MARK_PASS_SLACK_S if spot else 0)
+        hi = m["end_t"] + (MARK_PASS_SLACK_S if spot else 0)
+        passes = conn.execute(
+            "SELECT segment_id, enter_t, exit_t, from_off, to_off FROM ride_segments"
+            " WHERE ride_id = ? AND exit_t >= ? AND enter_t <= ? ORDER BY seq",
+            (m["ride_id"], lo, hi),
+        ).fetchall()
+        for p in passes:
+            if p["segment_id"] not in geoms:
+                s = conn.execute("SELECT geom, length_m FROM road_segments WHERE id = ?", (p["segment_id"],)).fetchone()
+                geoms[p["segment_id"]] = (json.loads(s["geom"]), s["length_m"])
+
+        def off(p, t: float) -> float:
+            span = p["exit_t"] - p["enter_t"]
+            f = 0.5 if span <= 0 else max(0.0, min(1.0, (t - p["enter_t"]) / span))
+            return p["from_off"] + f * (p["to_off"] - p["from_off"])
+
+        geometry = None
+        on: set[str] = set()  # the segments the mark lies on
+        if spot and passes:
+            t = m["start_t"]
+            p = min(passes, key=lambda p: 0 if p["enter_t"] <= t <= p["exit_t"] else min(abs(t - p["enter_t"]), abs(t - p["exit_t"])))
+            line, length = geoms[p["segment_id"]]
+            geometry = {"type": "Point", "coordinates": _slice(line, length, off(p, t), off(p, t))[0]}
+            on.add(p["segment_id"])
+        elif passes:
+            parts = []
+            for p in passes:
+                line, length = geoms[p["segment_id"]]
+                a, b = off(p, max(m["start_t"], p["enter_t"])), off(p, min(m["end_t"], p["exit_t"]))
+                if abs(b - a) >= 0.5:
+                    parts.append(_slice(line, length, a, b))
+                    on.add(p["segment_id"])
+            if parts:
+                geometry = {"type": "MultiLineString", "coordinates": parts}
+        if geometry is None:  # not matched: the recorded track itself
+            pts = conn.execute(
+                "SELECT lon, lat FROM points WHERE ride_id = ? AND t BETWEEN ? AND ? ORDER BY idx",
+                (m["ride_id"], m["start_t"], m["end_t"]),
+            ).fetchall()
+            if spot or len(pts) < 2:
+                geometry = {"type": "Point", "coordinates": [m["start_lon"], m["start_lat"]]}
+            else:
+                geometry = {"type": "MultiLineString", "coordinates": [[[r["lon"], r["lat"]] for r in pts]]}
+        out.append({
+            "id": m["id"], "ride_id": m["ride_id"], "ride_started_at": m["started_at"],
+            "tags": feelings.load_tags(m["tags"]), "note": m["note"],
+            "segments": sorted(on),
+            "geom": geometry,
         })
     return out
 

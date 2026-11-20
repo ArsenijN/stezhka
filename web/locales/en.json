@@ -220,7 +220,8 @@
     "note": "Note (optional)",
     "spot": "At {{at}}",
     "range": "{{from}} – {{to}}",
-    "deleted": "Mark deleted."
+    "deleted": "Mark deleted.",
+    "no_tags": "Note"
   },
   "roads": {
     "toggle": "My roads",
@@ -234,7 +235,9 @@
     "no_speed": "Only partly ridden: no speed yet",
     "last": "Last: {{when}}",
     "paved": "paved",
-    "unpaved": "unpaved"
+    "unpaved": "unpaved",
+    "marks_one": "{{count}} mark",
+    "marks_other": "{{count}} marks"
   },
   "road_class": {
     "motorway": "Motorway",
