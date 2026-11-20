@@ -60,6 +60,7 @@ async function setRoads(on) {
   else if (!res.segments.length) toast(res.pending ? t('roads.pending') : t('roads.none'));
   state.roads = new Map(res.segments.map((s) => [s.id, s]));
   state.map.showRoads(res.segments);
+  if (!state.ride) state.map.fitRoads(res.segments);
 }
 
 function roadPopup(id, lngLat) {
@@ -685,9 +686,13 @@ async function selectRide(id) {
   state.draft = null;
   if (state.compareId === id) state.compareId = null;
   if (!id) {
+    // nothing selected (the logo): an empty map, or all of "My roads" when that layer is on
     state.ride = null;
+    state.points = null;
     state.compareId = null;
-    state.map.showCompare(null);
+    state.map.clearRide();
+    state.chart.clear();
+    if (state.roads) state.map.fitRoads([...state.roads.values()]);
     renderRideList();
     renderStats();
     return;

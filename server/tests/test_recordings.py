@@ -168,3 +168,13 @@ def test_a_much_better_recording_wins_over_the_preferred_app(client, cfg):
     connect(cfg.db_path).execute("UPDATE rides SET creator = 'Phone B' WHERE id = ?", (b,))
     a = upload(client, phone_a())
     assert listed(client) == [a]
+
+
+def test_a_phone_started_mid_ride_is_linked_but_not_main(client):
+    from dataclasses import replace as rep
+
+    full = upload(client, phone_a())  # the whole trip, 150 s
+    # second phone switched on 60 s in, recording every second (cleanest per second, but half the trip)
+    late = upload(client, to_gpx([rep(p, north=p.north + 6) for p in commute().points if p.t >= 60]))
+    assert listed(client) == [full]
+    assert [r["id"] for r in client.get(f"/api/rides/{full}").json()["recordings"]] == [late]

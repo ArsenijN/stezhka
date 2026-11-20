@@ -338,6 +338,21 @@ export class RideMap {
 
   onRoadClick(fn) { this.roadClickHandlers.add(fn); }
 
+  /** No ride selected: remove its track, stops, marks, cursor and comparison. */
+  clearRide() {
+    this.points = null;
+    this.pinned = null;
+    for (const id of ['track', 'stops', 'marks', 'cursor', 'compare']) this._setData(id, EMPTY);
+  }
+
+  /** Zoom to show every ridden segment. */
+  fitRoads(segments) {
+    if (!segments?.length) return;
+    const b = new maplibregl.LngLatBounds();
+    for (const s of segments) for (const c of s.geom) b.extend(c);
+    this.map.fitBounds(b, { padding: 40, duration: 400, maxZoom: 16 });
+  }
+
   popup(lngLat, node) {
     new maplibregl.Popup({ closeButton: false, maxWidth: '260px' }).setLngLat(lngLat).setDOMContent(node).addTo(this.map);
   }

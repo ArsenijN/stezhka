@@ -86,14 +86,19 @@ WILD_MPS = 13.0  # a 1-second step faster than ~47 km/h is GPS jitter, not ridin
 WILD_WEIGHT = 10.0
 
 
-def quality(conn: sqlite3.Connection, ride_id: int) -> float:
+def quality(conn: sqlite3.Connection, ride_id: int, span: tuple[float, float] | None = None) -> float:
     """How well a recording covers its ride: share of the time with a fix at least every 3 s,
     minus a penalty for wild 1-second jumps. Measured on real two-phone trips: either phone can be
     the better one (iOS throttled Open GPX Tracker to a fix every 6-12 s on one ride, with 46-79
-    km/h jitter in between, while OpenTracks recorded it fully)."""
+    km/h jitter in between, while OpenTracks recorded it fully).
+
+    `span`: the whole trip's time range. A phone started mid-ride covers only part of it: measured
+    against its own span it could look better than the complete recording and become main.
+    """
     pts = _track(conn, ride_id)
     if len(pts) < 2 or pts[-1][0] <= pts[0][0]:
         return 0.0
+    start, end = span if span else (pts[0][0], pts[-1][0])
     covered = wild = ones = 0
     for (t0, la0, lo0), (t1, la1, lo1) in zip(pts, pts[1:]):
         dt = t1 - t0
@@ -104,7 +109,7 @@ def quality(conn: sqlite3.Connection, ride_id: int) -> float:
             kx = math.cos(math.radians(la0))
             if math.hypot((lo1 - lo0) * kx, la1 - la0) * 111_320 / dt > WILD_MPS:
                 wild += 1
-    return covered / (pts[-1][0] - pts[0][0]) - WILD_WEIGHT * wild / max(ones, 1)
+    return covered / max(end - start, 1.0) - WILD_WEIGHT * wild / max(ones, 1)
 
 
 def _best(conn: sqlite3.Connection, group: list[int]) -> int:
@@ -112,10 +117,11 @@ def _best(conn: sqlite3.Connection, group: list[int]) -> int:
     preferred app's (Settings), then the better one."""
     preferred = preferred_recorder(conn)
     rows = conn.execute(
-        f"SELECT id, creator, point_count * 1.0 / MAX(elapsed_s, 1) AS rate FROM rides"
+        f"SELECT id, creator, started_at, ended_at, point_count * 1.0 / MAX(elapsed_s, 1) AS rate FROM rides"
         f" WHERE id IN ({','.join('?' * len(group))})", group
     ).fetchall()
-    scored = [(quality(conn, r["id"]), r["creator"] == preferred and preferred is not None, r["rate"], -r["id"], r["id"])
+    span = (min(r["started_at"] for r in rows), max(r["ended_at"] for r in rows))
+    scored = [(quality(conn, r["id"], span), r["creator"] == preferred and preferred is not None, r["rate"], -r["id"], r["id"])
               for r in rows]
     top = max(q for q, *_ in scored)
     close = [s for s in scored if s[0] >= top - QUALITY_TIE]

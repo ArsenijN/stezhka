@@ -93,6 +93,15 @@ export class ProfileChart {
     this.draw();
   }
 
+  clear() {
+    this.data = null;
+    this.cursor = null;
+    this.pinned = null;
+    this.marks = [];
+    this.selection = null;
+    this.draw();
+  }
+
   setCursor(i) {
     this.cursor = i;
     this.draw();
