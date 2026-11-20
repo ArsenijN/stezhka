@@ -61,9 +61,12 @@ Since then:
 - v0.5.6: marks of every ride placed on the matched road segments and shown on *My roads* (red =
   problems, green = good things, blue = notes); tap one for the reasons, note and ride; the road
   popup counts the marks on it. Rides not matched yet show the mark on the recorded track.
+- v0.5.7: *vs usual* - each matched piece of a ride against the segment's median speed on the
+  other rides (needs 2+ passes there): map toggle (orange = slower, blue = faster), tap for both
+  speeds and the seconds gained or lost, and the total in the stats ("42 s faster than usual on
+  3.1 km"). A red-light wait counts as time lost on that piece: that is where the time went.
 
 Next:
-- Per-ride view of its segments: where this ride was slower/faster than usual.
 - Statistics split by wetness, time of day, bike; spread and sample count in the popup.
 - Junction costs: time lost at each junction / crossing (stops already detected).
 - Stop reasons from OSM within ~20 m: traffic signals, crossings, junctions; otherwise "unknown".

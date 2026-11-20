@@ -58,7 +58,10 @@
       <div class="map-wrap">
         <div id="map" class="map"></div>
         <div id="legend" class="legend"></div>
-        <button id="roads-toggle" class="map-toggle" type="button" aria-pressed="false" data-i18n="roads.toggle"></button>
+        <div class="map-toggles">
+          <button id="roads-toggle" class="map-toggle" type="button" aria-pressed="false" data-i18n="roads.toggle"></button>
+          <button id="usual-toggle" class="map-toggle" type="button" aria-pressed="false" data-i18n="usual.toggle" hidden></button>
+        </div>
         <p id="map-note" class="map-note" data-i18n="map.no_basemap" hidden></p>
       </div>
       <div class="chart-wrap">

@@ -27,7 +27,6 @@ log = logging.getLogger(__name__)
 SOURCE_KEY = "roads_source"  # settings: which basemap the stored matches were made on
 FULL_PASS = 0.6  # a pass counts for speed when it covers this share of the segment
 FULL_PASS_MISSING_M = 8.0  # ... or misses at most this much of it (short pieces at junctions)
-MIN_PASS_S = 2.0  # kept for reference: shorter passes borrow time from their neighbours
 CONTEXT_S = 4.0  # a pass's speed is measured over at least this much of the ride around it
 MAX_PASS_MPS = 16.0  # faster than this is a bad match, never a real ride here
 NAME_NEAR_UNITS = 10  # ~4 m: a street name line this close to a segment's middle names it
@@ -185,45 +184,58 @@ def match_pending(conn: sqlite3.Connection, basemap_dir: Path, should_stop=lambd
     return done
 
 
-def road_stats(conn: sqlite3.Connection) -> list[dict]:
-    """Every ridden segment with how often and how fast (main recordings of non-trashed rides).
+def _pass_speeds(conn: sqlite3.Connection, where: str = "r.primary_id IS NULL AND r.trashed_at IS NULL",
+                 params: tuple = ()) -> list[tuple[sqlite3.Row, float | None]]:
+    """Every pass of the selected rides with its speed, or None when it does not count for speed.
 
-    A pass's speed is its covered distance over its time. A pass under MIN_PASS_S (a few metres at a
-    junction) is too coarse alone - time between two fixes is split by distance - so it takes the
-    speed of the surrounding stretch of the same ride (neighbouring passes up to CONTEXT_S).
+    A pass's speed is its covered distance over its time. Only a (nearly) full pass counts. A short
+    pass (a few metres at a junction) is too coarse alone - time between two fixes is split by
+    distance - so it is measured over the surrounding stretch of the same ride (up to CONTEXT_S).
     """
     rows = conn.execute(
-        """
-        SELECT rs.segment_id, rs.ride_id, rs.seq, rs.enter_t, rs.exit_t, rs.dist_m, s.length_m
+        f"""
+        SELECT rs.segment_id, rs.ride_id, rs.seq, rs.enter_t, rs.exit_t, rs.from_off, rs.to_off, rs.dist_m, s.length_m
         FROM ride_segments rs
-        JOIN rides r ON r.id = rs.ride_id AND r.primary_id IS NULL AND r.trashed_at IS NULL
+        JOIN rides r ON r.id = rs.ride_id
         JOIN road_segments s ON s.id = rs.segment_id
+        WHERE {where}
         ORDER BY rs.ride_id, rs.seq
-        """
+        """,
+        params,
     ).fetchall()
-    per: dict[str, dict] = {}
     by_ride: dict[int, list] = {}
     for r in rows:
         by_ride.setdefault(r["ride_id"], []).append(r)
+    out = []
     for seq in by_ride.values():
         for k, r in enumerate(seq):
-            st = per.setdefault(r["segment_id"], {"rides": set(), "passes": 0, "speeds": [], "last_t": 0.0})
-            st["rides"].add(r["ride_id"])
-            st["passes"] += 1
-            st["last_t"] = max(st["last_t"], r["exit_t"])
+            speed = None
             full = r["dist_m"] >= FULL_PASS * r["length_m"] or r["length_m"] - r["dist_m"] <= FULL_PASS_MISSING_M
-            if not full:
-                continue
-            d, t = r["dist_m"], r["exit_t"] - r["enter_t"]
-            lo = hi = k
-            while t < CONTEXT_S and (lo > 0 or hi < len(seq) - 1):
-                for j in (lo - 1, hi + 1):
-                    if 0 <= j < len(seq) and abs(seq[j]["enter_t"] - r["enter_t"]) < 60:
-                        d += seq[j]["dist_m"]
-                        t += seq[j]["exit_t"] - seq[j]["enter_t"]
-                lo, hi = max(lo - 1, 0), min(hi + 1, len(seq) - 1)
-            if t > 0 and d / t <= MAX_PASS_MPS:
-                st["speeds"].append(d / t)
+            if full:
+                d, t = r["dist_m"], r["exit_t"] - r["enter_t"]
+                lo = hi = k
+                while t < CONTEXT_S and (lo > 0 or hi < len(seq) - 1):
+                    for j in (lo - 1, hi + 1):
+                        if 0 <= j < len(seq) and abs(seq[j]["enter_t"] - r["enter_t"]) < 60:
+                            d += seq[j]["dist_m"]
+                            t += seq[j]["exit_t"] - seq[j]["enter_t"]
+                    lo, hi = max(lo - 1, 0), min(hi + 1, len(seq) - 1)
+                if t > 0 and d / t <= MAX_PASS_MPS:
+                    speed = d / t
+            out.append((r, speed))
+    return out
+
+
+def road_stats(conn: sqlite3.Connection) -> list[dict]:
+    """Every ridden segment with how often and how fast (main recordings of non-trashed rides)."""
+    per: dict[str, dict] = {}
+    for r, speed in _pass_speeds(conn):
+        st = per.setdefault(r["segment_id"], {"rides": set(), "passes": 0, "speeds": [], "last_t": 0.0})
+        st["rides"].add(r["ride_id"])
+        st["passes"] += 1
+        st["last_t"] = max(st["last_t"], r["exit_t"])
+        if speed is not None:
+            st["speeds"].append(speed)
     if not per:
         return []
     segs = {s["id"]: s for s in conn.execute(
@@ -242,6 +254,41 @@ def road_stats(conn: sqlite3.Connection) -> list[dict]:
             "geom": json.loads(s["geom"]),
         })
     return out
+
+
+USUAL_MIN_PASSES = 2  # a segment's usual speed needs at least this many passes from other rides
+
+
+def ride_vs_usual(conn: sqlite3.Connection, ride_id: int) -> dict:
+    """This ride's passes against each segment's usual (median) speed on the *other* rides.
+
+    `delta_s` > 0 = time lost against the usual pace, < 0 = time gained. Other rides are main
+    recordings of non-trashed trips; this trip's second phone is never one of them.
+    """
+    usual: dict[str, list[float]] = {}
+    for r, speed in _pass_speeds(conn, "r.primary_id IS NULL AND r.trashed_at IS NULL AND r.id != ?", (ride_id,)):
+        if speed is not None:
+            usual.setdefault(r["segment_id"], []).append(speed)
+    passes, geoms = [], {}
+    compared_m = delta_s = 0.0
+    for r, speed in _pass_speeds(conn, "r.id = ?", (ride_id,)):
+        others = usual.get(r["segment_id"], [])
+        if speed is None or len(others) < USUAL_MIN_PASSES or r["dist_m"] < 1:
+            continue
+        typical = statistics.median(others)
+        d = r["dist_m"] / speed - r["dist_m"] / typical
+        compared_m += r["dist_m"]
+        delta_s += d
+        sid = r["segment_id"]
+        if sid not in geoms:
+            geoms[sid] = json.loads(conn.execute("SELECT geom FROM road_segments WHERE id = ?", (sid,)).fetchone()[0])
+        geom = _slice(geoms[sid], r["length_m"], r["from_off"], r["to_off"]) if len(geoms[sid]) > 1 else geoms[sid]
+        passes.append({
+            "segment_id": sid, "enter_t": r["enter_t"], "exit_t": r["exit_t"], "dist_m": round(r["dist_m"], 1),
+            "speed_mps": round(speed, 2), "usual_mps": round(typical, 2), "samples": len(others),
+            "delta_s": round(d, 1), "geom": geom,
+        })
+    return {"passes": passes, "compared_m": round(compared_m, 1), "delta_s": round(delta_s, 1)}
 
 
 MARK_PASS_SLACK_S = 3.0  # a spot between two passes takes the nearest one this close in time

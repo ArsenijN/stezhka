@@ -22,6 +22,14 @@ export const SPEED_STOPS = [
 ];
 
 export const COMPARE_COLOR = '#7c3aed';
+// this ride's speed / usual speed on a segment -> colour: orange = slower, grey = as usual, blue = faster
+export const USUAL_STOPS = [
+  [0.7, '#c2410c'],
+  [0.9, '#f59e0b'],
+  [1.0, '#a3a3a3'],
+  [1.1, '#38bdf8'],
+  [1.3, '#1d4ed8'],
+];
 const STOP_COLORS = { stop: '#d7301f', break: '#6b7280', pause: '#1f2937' };
 const UZHHOROD = [22.2879, 48.6208];
 const EMPTY = { type: 'FeatureCollection', features: [] };
@@ -89,6 +97,8 @@ export class RideMap {
     this.marks = EMPTY;
     this.roads = EMPTY;
     this.roadmarks = EMPTY;
+    this.usual = EMPTY; // this ride against the usual speed per segment (null-free FeatureCollection)
+    this.usualClickHandlers = new Set();
     this.hiddenMarksRide = -1; // the selected ride: its own marks are drawn from the ride, not twice
     this.roadClickHandlers = new Set();
     this.roadMarkClickHandlers = new Set();
@@ -157,6 +167,7 @@ export class RideMap {
     m.addSource('marks', { type: 'geojson', data: this.marks, tolerance: 0 });
     m.addSource('roads', { type: 'geojson', data: this.roads, tolerance: 0 });
     m.addSource('roadmarks', { type: 'geojson', data: this.roadmarks, tolerance: 0 });
+    m.addSource('usual', { type: 'geojson', data: this.usual, tolerance: 0 });
     // "My roads": every ridden segment, coloured by typical speed, thicker when ridden more often
     const ridden = ['min', ['get', 'rides'], 8];
     m.addLayer({
@@ -201,6 +212,15 @@ export class RideMap {
       layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: { 'line-color': speedColorExpr(), 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 2.5, 16, 6] },
     });
+    // "vs usual": the ride's matched passes over the faded track
+    const ratio = ['interpolate', ['linear'], ['get', 'ratio']];
+    for (const [v, c] of USUAL_STOPS) ratio.push(v, c);
+    m.addLayer({
+      id: 'usual', type: 'line', source: 'usual',
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': ratio, 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 3, 16, 7] },
+    });
+    if (this.usual.features.length) m.setPaintProperty('track', 'line-opacity', 0.25);
     // Invisible wide line: makes the track easy to hover with a mouse or finger.
     m.addLayer({
       id: 'track-hit', type: 'line', source: 'track',
@@ -288,6 +308,10 @@ export class RideMap {
       });
     }
     m.on('mouseleave', 'stops', () => { m.getCanvas().style.cursor = ''; });
+    m.on('click', 'usual', (e) => {
+      const p = e.features?.[0]?.properties;
+      if (p) for (const fn of this.usualClickHandlers) fn(p, e.lngLat);
+    });
     // one popup per tap: every road mark under the finger (several rides can mark one place)
     m.on('click', (e) => {
       if (!m.getLayer('roadmarks-line')) return;
@@ -369,6 +393,20 @@ export class RideMap {
 
   onRoadClick(fn) { this.roadClickHandlers.add(fn); }
   onRoadMarkClick(fn) { this.roadMarkClickHandlers.add(fn); }
+  onUsualClick(fn) { this.usualClickHandlers.add(fn); }
+
+  /** This ride's passes against the usual speed (/api/rides/{id}/usual `passes`), or null. */
+  showUsual(passes) {
+    this._setData('usual', !passes?.length ? EMPTY : {
+      type: 'FeatureCollection',
+      features: passes.map((p) => ({
+        type: 'Feature',
+        properties: { ratio: p.speed_mps / p.usual_mps, speed: p.speed_mps, usual: p.usual_mps, delta: p.delta_s, samples: p.samples },
+        geometry: { type: 'LineString', coordinates: p.geom },
+      })),
+    });
+    if (this.map.getLayer('track')) this.map.setPaintProperty('track', 'line-opacity', passes?.length ? 0.25 : 1);
+  }
 
   /** Marks of every ride placed on the roads (/api/roads `marks`), or null to hide them. */
   showRoadMarks(marks) {
@@ -395,6 +433,7 @@ export class RideMap {
     this.points = null;
     this.pinned = null;
     for (const id of ['track', 'stops', 'marks', 'cursor', 'compare']) this._setData(id, EMPTY);
+    this.showUsual(null);
   }
 
   /** Zoom to show every ridden segment. */

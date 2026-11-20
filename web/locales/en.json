@@ -253,5 +253,21 @@
     "cycleway": "Cycleway",
     "pedestrian": "Pedestrian street",
     "other": "Road"
+  },
+  "usual": {
+    "toggle": "vs usual",
+    "title": "Compared with usual",
+    "legend": "This ride vs usual speed",
+    "slower_short": "slower",
+    "faster_short": "faster",
+    "faster": "{{time}} faster than usual on {{dist}}",
+    "slower": "{{time}} slower than usual on {{dist}}",
+    "same": "As fast as usual on {{dist}}",
+    "usually_one": "Usually {{speed}} ({{count}} pass)",
+    "usually_other": "Usually {{speed}} ({{count}} passes)",
+    "gained": "{{time}} gained",
+    "lost": "{{time}} lost",
+    "seconds_one": "{{count}} s",
+    "seconds_other": "{{count}} s"
   }
 }

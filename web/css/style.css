@@ -163,11 +163,18 @@ a.btn { text-decoration: none; }
 .legend-bar { height: 8px; border-radius: 4px; }
 .legend-ticks { position: relative; height: 12px; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .legend-ticks span { position: absolute; transform: translateX(-50%); }
+.legend-ends { display: flex; justify-content: space-between; }
+.legend-ends span { position: static; transform: none; }
+.usual-gain { color: #1d4ed8; }
+.usual-loss { color: #c2410c; }
+@media (prefers-color-scheme: dark) { .usual-gain { color: #7dd3fc; } .usual-loss { color: #fdba74; } }
+.map-toggles { position: absolute; top: 10px; left: 10px; z-index: 2; display: flex; gap: 6px; }
 .map-toggle {
-  position: absolute; top: 10px; left: 10px; z-index: 2; height: 30px; padding: 0 10px; font: inherit; font-size: 13px;
+  height: 30px; padding: 0 10px; font: inherit; font-size: 13px;
   background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); cursor: pointer;
 }
 .map-toggle[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.map-toggle[hidden] { display: none; }
 .road-popup { display: grid; gap: 2px; font-size: 13px; }
 .road-mark { border-left: 3px solid #0ea5e9; padding-left: 6px; margin-top: 4px; }
 .road-mark.bad { border-left-color: #e11d48; }

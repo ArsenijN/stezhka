@@ -311,3 +311,32 @@ def test_marks_are_placed_on_the_ridden_segments(tmp_path):
     # a trashed ride's marks leave the map
     conn.execute("UPDATE rides SET trashed_at = 1 WHERE id = ?", (rid,))
     assert segments.road_marks(conn) == []
+
+
+def test_ride_is_compared_with_the_usual_speed_of_other_rides(tmp_path):
+    from stezhka.ingest import import_bytes
+    from synth import Builder
+
+    conn = connect(tmp_path / "db.sqlite3")
+    rids = []
+    for day in range(4):  # separate trips, a day apart
+        b = Builder(t=day * 86400.0).ride(60, 5.0)
+        rids.append(import_bytes(conn, tmp_path / "raw", b.gpx(), f"r{day}.gpx").ride_id)
+    geom = [[22.0, 48.6], [22.0 + 40 / (111_320 * math.cos(math.radians(48.6))), 48.6]]
+    conn.execute("INSERT INTO road_segments(id, class, length_m, geom) VALUES ('a', 'minor', 40, ?)", (json.dumps(geom),))
+    # 40 m in 10 s (4 m/s) on this ride; 8 s (5 m/s) on two others; the fourth is in the trash
+    for rid, secs in zip(rids, (10, 8, 8, 4)):
+        t0 = conn.execute("SELECT MIN(t) FROM points WHERE ride_id = ?", (rid,)).fetchone()[0]
+        conn.execute(
+            "INSERT INTO ride_segments(ride_id, seq, segment_id, enter_t, exit_t, from_off, to_off, dist_m)"
+            " VALUES (?, 0, 'a', ?, ?, 0, 40, 40)", (rid, t0, t0 + secs),
+        )
+    conn.execute("UPDATE rides SET trashed_at = 1 WHERE id = ?", (rids[3],))
+    res = segments.ride_vs_usual(conn, rids[0])
+    (p,) = res["passes"]
+    assert p["speed_mps"] == 4.0 and p["usual_mps"] == 5.0 and p["samples"] == 2
+    assert p["delta_s"] == 2.0 and res["delta_s"] == 2.0 and res["compared_m"] == 40.0
+    assert len(p["geom"]) == 2
+    # one other pass is not enough for a "usual" speed
+    conn.execute("UPDATE rides SET trashed_at = 1 WHERE id = ?", (rids[2],))
+    assert segments.ride_vs_usual(conn, rids[0])["passes"] == []

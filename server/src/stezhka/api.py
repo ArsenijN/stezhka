@@ -442,6 +442,11 @@ def create_app(cfg: Config) -> FastAPI:
         app_name = "".join(ch for ch in (row["creator"] or "") if ch.isalnum())[:24]
         return f"stezhka_{when}_{app_name or 'ride'}_{row['id']}.gpx"
 
+    @app.get("/api/rides/{ride_id}/usual")
+    def ride_vs_usual(ride_id: int, conn: sqlite3.Connection = Depends(require_auth)):
+        _ride(conn, ride_id)
+        return segments.ride_vs_usual(conn, ride_id)
+
     @app.get("/api/rides/{ride_id}/gpx")
     def ride_gpx(ride_id: int, conn: sqlite3.Connection = Depends(require_auth)):
         row = conn.execute(

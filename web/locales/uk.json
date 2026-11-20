@@ -271,5 +271,25 @@
     "cycleway": "Велодоріжка",
     "pedestrian": "Пішохідна вулиця",
     "other": "Дорога"
+  },
+  "usual": {
+    "toggle": "Проти звичного",
+    "title": "Порівняно зі звичним",
+    "legend": "Ця поїздка проти звичної швидкості",
+    "slower_short": "повільніше",
+    "faster_short": "швидше",
+    "faster": "На {{time}} швидше за звичне на {{dist}}",
+    "slower": "На {{time}} повільніше за звичне на {{dist}}",
+    "same": "Як зазвичай на {{dist}}",
+    "usually_one": "Зазвичай {{speed}} ({{count}} проїзд)",
+    "usually_few": "Зазвичай {{speed}} ({{count}} проїзди)",
+    "usually_many": "Зазвичай {{speed}} ({{count}} проїздів)",
+    "usually_other": "Зазвичай {{speed}} ({{count}} проїзду)",
+    "gained": "Виграно {{time}}",
+    "lost": "Втрачено {{time}}",
+    "seconds_one": "{{count}} с",
+    "seconds_few": "{{count}} с",
+    "seconds_many": "{{count}} с",
+    "seconds_other": "{{count}} с"
   }
 }

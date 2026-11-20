@@ -3,7 +3,7 @@
 import { api, ApiError, columns } from './api.js';
 import { initI18n, setLocale, locale, locales, onLocaleChange, t } from './i18n.js';
 import * as fmt from './format.js';
-import { RideMap, SPEED_STOPS } from './map.js';
+import { RideMap, SPEED_STOPS, USUAL_STOPS } from './map.js';
 import { ProfileChart } from './chart.js';
 import { initSettings } from './settings.js';
 import { NEGATIVE_TAGS, POSITIVE_TAGS, markKind, tagsFor } from './feelings.js';
@@ -27,7 +27,58 @@ const state = {
   draft: null, // mark being created or edited: {id|null, start_t, end_t, tags, note}
   roads: null, // ridden segments (/api/roads) while "My roads" is on
   roadMarks: null, // marks of every ride placed on those roads (id -> mark)
+  usual: null, // the selected ride against the usual speed per segment (/api/rides/{id}/usual)
+  usualOn: initialUsual(), // map colours the ride by "vs usual" instead of speed
 };
+
+// --- "vs usual": this ride against the typical speed of each road segment ---------------------------
+
+function initialUsual() {
+  try { return localStorage.getItem('stezhka.usual') === '1'; } catch { return false; }
+}
+
+function hasUsual() {
+  return Boolean(state.usual?.passes.length);
+}
+
+/** Show the toggle when there is something to compare, and draw the comparison when it is on. */
+function applyUsual() {
+  const btn = $('usual-toggle');
+  btn.hidden = !hasUsual();
+  btn.setAttribute('aria-pressed', String(state.usualOn));
+  state.map.showUsual(state.usualOn && hasUsual() ? state.usual.passes : null);
+  renderLegend();
+}
+
+function setUsual(on) {
+  state.usualOn = on;
+  try { localStorage.setItem('stezhka.usual', on ? '1' : '0'); } catch { /* not essential */ }
+  applyUsual();
+}
+
+function gapText(s) {
+  const a = Math.abs(s);
+  return a < 60 ? t('usual.seconds', { count: Math.round(a) }) : fmt.duration(a);
+}
+
+/** "42 s faster than usual on 3.1 km", or null when nothing was compared. */
+function usualText() {
+  const u = state.usual;
+  if (!hasUsual()) return null;
+  const dist = fmt.distance(u.compared_m);
+  if (Math.abs(u.delta_s) < 1) return t('usual.same', { dist });
+  return u.delta_s < 0 ? t('usual.faster', { time: gapText(u.delta_s), dist }) : t('usual.slower', { time: gapText(u.delta_s), dist });
+}
+
+function usualPopup(p, lngLat) {
+  const delta = Number(p.delta);
+  state.map.popup(lngLat, el('div', { class: 'road-popup' },
+    el('strong', {}, fmt.speed(Number(p.speed))),
+    el('div', {}, t('usual.usually', { speed: fmt.speed(Number(p.usual)), count: Number(p.samples) })),
+    Math.abs(delta) >= 0.5
+      ? el('div', { class: delta < 0 ? 'usual-gain' : 'usual-loss' }, delta < 0 ? t('usual.gained', { time: gapText(delta) }) : t('usual.lost', { time: gapText(delta) }))
+      : null));
+}
 
 // --- "My roads": ridden segments with typical speed -----------------------------------------------
 
@@ -665,6 +716,8 @@ function renderStats() {
       stat(t('stats.climb'), `↑ ${fmt.elevation(r.ascent_m)}  ↓ ${fmt.elevation(r.descent_m)}`, '', elevationInfoButton()),
       stat(t('stats.stops'), t('stats.stop_summary', { count: stops.length, time: fmt.duration(stopTime) })),
       ...weatherStats(r));
+    const vs = usualText();
+    if (vs) grid.append(stat(t('usual.title'), vs, 'wide'));
   }
   // Element.append() would turn null into the text "null", so drop the empty parts first
   box.append(...[
@@ -706,6 +759,15 @@ function weatherStats(r) {
 
 function renderLegend() {
   const box = $('legend');
+  if (state.usualOn && hasUsual()) {
+    const min = USUAL_STOPS[0][0];
+    const max = USUAL_STOPS[USUAL_STOPS.length - 1][0];
+    const bar = el('div', { class: 'legend-bar' });
+    bar.style.background = `linear-gradient(to right, ${USUAL_STOPS.map(([v, c]) => `${c} ${((v - min) / (max - min)) * 100}%`).join(', ')})`;
+    const ticks = el('div', { class: 'legend-ticks legend-ends' }, el('span', {}, t('usual.slower_short')), el('span', {}, t('usual.faster_short')));
+    box.replaceChildren(el('div', { class: 'legend-title' }, t('usual.legend')), bar, ticks);
+    return;
+  }
   const min = SPEED_STOPS[0][0];
   const max = SPEED_STOPS[SPEED_STOPS.length - 1][0];
   const grad = SPEED_STOPS.map(([v, c]) => `${c} ${((v - min) / (max - min)) * 100}%`).join(', ');
@@ -727,6 +789,8 @@ async function selectRide(id) {
   state.draft = null;
   if (state.compareId === id) state.compareId = null;
   state.map.hideRoadMarksOf(id || null);
+  state.usual = null;
+  applyUsual();
   if (!id) {
     // nothing selected (the logo): an empty map, or all of "My roads" when that layer is on
     state.ride = null;
@@ -740,9 +804,13 @@ async function selectRide(id) {
     return;
   }
   try {
-    const [ride, pts] = await Promise.all([api(`rides/${id}`), api(`rides/${id}/points`)]);
+    const [ride, pts, usual] = await Promise.all([
+      api(`rides/${id}`), api(`rides/${id}/points`),
+      api(`rides/${id}/usual`).catch(() => null), // optional: the ride still shows without it
+    ]);
     state.ride = ride;
     state.points = columns(pts);
+    state.usual = usual;
   } catch (ex) {
     toast(errorText(ex), 'error');
     if (ex instanceof ApiError && ex.status === 401) return showLogin(true);
@@ -753,6 +821,7 @@ async function selectRide(id) {
   state.chart.setData(state.points);
   await state.map.showRide(state.points, state.ride.stops);
   updateMarks();
+  applyUsual();
   if (state.compareId) await setCompare(state.compareId);
 }
 
@@ -809,6 +878,8 @@ async function startApp() {
     state.map.onSelect((i) => { state.map.setPinned(i); state.chart.setPinned(i); });
     state.map.onRoadClick(roadPopup);
     state.map.onRoadMarkClick(roadMarksPopup);
+    state.map.onUsualClick(usualPopup);
+    $('usual-toggle').addEventListener('click', () => setUsual(!state.usualOn));
     $('roads-toggle').addEventListener('click', () => setRoads($('roads-toggle').getAttribute('aria-pressed') !== 'true'));
     try { if (localStorage.getItem('stezhka.roads') === '1') setRoads(true); } catch { /* storage blocked */ }
     renderLegend();

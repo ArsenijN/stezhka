@@ -6,10 +6,11 @@ Self-hosted ride statistics for cyclists: record rides on your phone, keep them 
 server, see where you are fast or slow, and (soon) learn per-road-segment speeds, predict ETA,
 and get routes that mix known fast roads with paths you have never ridden.
 
-Status: **v0.5.6** - import (OpenTracks, Open GPX Tracker, any GPX), stop detection, self-hosted
+Status: **v0.5.7** - import (OpenTracks, Open GPX Tracker, any GPX), stop detection, self-hosted
 map, terrain elevation, weather, bikes, ride comparison, two phones on one trip, how a ride felt
 with marked spots, trash with undo, GPX export, and *My roads*: every ride matched to the road
-network with typical and best speed per segment and everyone's marks on the roads. Done and next:
+network with typical and best speed per segment, each ride compared with your usual pace, and
+all marks on the roads. Done and next:
 [ROADMAP.md](ROADMAP.md).
 Why things are built this way: [docs/decisions.md](docs/decisions.md).
 
