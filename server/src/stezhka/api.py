@@ -201,6 +201,10 @@ def create_app(cfg: Config) -> FastAPI:
             linked = recordings.link_all(conn)  # rides imported before linking existed, or missed
             if linked:
                 log.info("linked %d recording group(s)", linked)
+            # main recordings follow the current rule (not trips the user picked by hand)
+            repicked = recordings.set_preferred_recorder(conn, recordings.preferred_recorder(conn))
+            if repicked:
+                log.info("re-picked the main recording of %d trip(s)", repicked)
             copies = recordings.drop_all_copies(conn)  # the same recording uploaded twice
             if copies:
                 log.info("moved %d duplicate export(s) to the trash", copies)
