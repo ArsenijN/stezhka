@@ -215,6 +215,24 @@ MIGRATIONS: list[str] = [
     ALTER TABLE rides ADD COLUMN match_version INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE rides ADD COLUMN match_error TEXT;
     """,
+    # 10: why a ride stopped or slowed down (reasons.py), from OSM nodes fetched per area cell (osm.py)
+    """
+    CREATE TABLE osm_cells (
+        cell       TEXT PRIMARY KEY,  -- osm.cell_key(): 0.1 degree square
+        fetched_at REAL NOT NULL
+    );
+    CREATE TABLE osm_nodes (
+        id   INTEGER PRIMARY KEY,  -- OSM node id
+        cell TEXT NOT NULL,
+        kind TEXT NOT NULL,        -- osm.KINDS
+        lat  REAL NOT NULL,
+        lon  REAL NOT NULL
+    );
+    CREATE INDEX osm_nodes_pos ON osm_nodes(lat, lon);
+    CREATE INDEX osm_nodes_cell ON osm_nodes(cell);
+    ALTER TABLE rides ADD COLUMN reason_version INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE stops ADD COLUMN reason_m REAL;  -- distance to the feature that explains it
+    """,
 ]
 
 

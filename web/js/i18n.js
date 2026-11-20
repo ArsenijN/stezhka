@@ -8,7 +8,7 @@
 //   * Missing key in the current locale -> English; missing in English -> the key itself + a warning.
 
 export const FALLBACK_LOCALE = 'en';
-export const DYNAMIC_PREFIXES = ['errors.', 'stop_kind.', 'weather.dir.', 'weather.wetness.', 'bike_kind.', 'tag.', 'road_class.'];
+export const DYNAMIC_PREFIXES = ['errors.', 'stop_kind.', 'weather.dir.', 'weather.wetness.', 'bike_kind.', 'tag.', 'road_class.', 'stop_reason.'];
 const STORAGE_KEY = 'stezhka.locale';
 
 let available = [{ code: FALLBACK_LOCALE, name: 'English' }];

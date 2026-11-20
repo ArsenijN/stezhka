@@ -30,7 +30,7 @@ export const USUAL_STOPS = [
   [1.1, '#38bdf8'],
   [1.3, '#1d4ed8'],
 ];
-const STOP_COLORS = { stop: '#d7301f', break: '#6b7280', pause: '#1f2937' };
+const STOP_COLORS = { stop: '#d7301f', break: '#6b7280', pause: '#1f2937', slowdown: '#f59e0b' };
 const UZHHOROD = [22.2879, 48.6208];
 const EMPTY = { type: 'FeatureCollection', features: [] };
 const darkQuery = matchMedia('(prefers-color-scheme: dark)');
@@ -229,8 +229,8 @@ export class RideMap {
     m.addLayer({
       id: 'stops', type: 'circle', source: 'stops',
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['get', 'duration'], 5, 4, 60, 7, 300, 10],
-        'circle-color': ['match', ['get', 'kind'], 'stop', STOP_COLORS.stop, 'break', STOP_COLORS.break, STOP_COLORS.pause],
+        'circle-radius': ['case', ['==', ['get', 'kind'], 'slowdown'], 5, ['interpolate', ['linear'], ['get', 'duration'], 5, 4, 60, 7, 300, 10]],
+        'circle-color': ['match', ['get', 'kind'], 'stop', STOP_COLORS.stop, 'break', STOP_COLORS.break, 'slowdown', STOP_COLORS.slowdown, STOP_COLORS.pause],
         'circle-stroke-color': '#fff',
         'circle-stroke-width': 2,
       },
@@ -275,8 +275,16 @@ export class RideMap {
       const title = document.createElement('strong');
       title.textContent = t(`stop_kind.${p.kind}`);
       const body = document.createElement('div');
-      body.textContent = `${fmt.time(p.start_t)} · ${fmt.duration(p.duration)}`;
+      body.textContent = p.kind === 'slowdown'
+        ? `${fmt.time(p.start_t)} · ${t('stops.slowed', { from: fmt.speed(p.v0), to: fmt.speed(p.v1) })}`
+        : `${fmt.time(p.start_t)} · ${fmt.duration(p.duration)}`;
       box.append(title, body);
+      if (p.kind === 'stop' || p.kind === 'slowdown') {
+        const why = document.createElement('div');
+        why.className = 'muted';
+        why.textContent = p.reason ? t(`stop_reason.${p.reason}`) : t('stops.reason_unknown');
+        box.append(why);
+      }
       new maplibregl.Popup({ closeButton: false }).setLngLat(e.lngLat).setDOMContent(box).addTo(m);
     });
     m.on('mouseenter', 'stops', () => { m.getCanvas().style.cursor = 'pointer'; });
@@ -350,7 +358,11 @@ export class RideMap {
       type: 'FeatureCollection',
       features: stops.map((s) => ({
         type: 'Feature',
-        properties: { kind: s.kind, duration: s.end_t - s.start_t, start_t: s.start_t },
+        properties: {
+          kind: s.kind, duration: s.end_t - s.start_t, start_t: s.start_t, reason: s.reason || '',
+          // slowdowns: the speed before and after, from the track
+          v0: pts.speed?.[s.start_idx] ?? null, v1: pts.speed?.[s.end_idx] ?? null,
+        },
         geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
       })),
     });

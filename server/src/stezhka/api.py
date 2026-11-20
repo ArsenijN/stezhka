@@ -179,9 +179,8 @@ def create_app(cfg: Config) -> FastAPI:
     def open_db() -> sqlite3.Connection:
         return connect(cfg.db_path)
 
-    worker = EnrichWorker(open_db, cfg.dem_dir) if cfg.enrich else None
-
     matcher = segments.MatchWorker(open_db, cfg.basemap_dir)
+    worker = EnrichWorker(open_db, cfg.dem_dir, on_osm=matcher.wake) if cfg.enrich else None
 
     def imported() -> None:
         if worker:

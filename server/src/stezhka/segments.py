@@ -171,8 +171,11 @@ def pending(conn: sqlite3.Connection, limit: int = 50) -> list[int]:
 
 def match_pending(conn: sqlite3.Connection, basemap_dir: Path, should_stop=lambda: False) -> int:
     """Match every ride that needs it. Re-matches everything after a basemap refresh."""
+    from . import reasons  # reasons reads the same tiles; imported here to keep module loading light
+
     path = basemap_file(basemap_dir)
     if not path.is_file():
+        reasons.explain_pending(conn, None, should_stop)  # OSM nodes alone, no junctions or barriers
         return 0
     version = basemap_version(basemap_dir)
     if version and get_setting(conn, SOURCE_KEY) != version:
@@ -200,6 +203,7 @@ def match_pending(conn: sqlite3.Connection, basemap_dir: Path, should_stop=lambd
                                  (MATCH_VERSION, str(e)[:500], rid))
         # segments no ride uses any more (after a refresh or deletions)
         conn.execute("DELETE FROM road_segments WHERE id NOT IN (SELECT segment_id FROM ride_segments)")
+        reasons.explain_pending(conn, source, should_stop)
     finally:
         source.close()
     if done:

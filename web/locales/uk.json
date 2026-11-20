@@ -98,7 +98,9 @@
     "elevation_source_dem": "Висота з моделі рельєфу Copernicus. Вона вимірює поверхню, тож у лісі та між будинками може показувати висоту крон чи дахів.",
     "more": "Показати всі подробиці",
     "less": "Показати лише основне",
-    "elevation_info": "Звідки дані про висоту"
+    "elevation_info": "Звідки дані про висоту",
+    "slowdowns": "Різкі гальмування",
+    "why_stopped": "Чому зупинки й гальмування"
   },
   "chart": {
     "elevation": "Висота",
@@ -113,7 +115,8 @@
   "stop_kind": {
     "stop": "Зупинка",
     "break": "Перерва",
-    "pause": "Запис на паузі"
+    "pause": "Запис на паузі",
+    "slowdown": "Різке гальмування"
   },
   "upload": {
     "done_one": "Імпортовано {{count}} нову поїздку.",
@@ -291,5 +294,18 @@
     "seconds_few": "{{count}} с",
     "seconds_many": "{{count}} с",
     "seconds_other": "{{count}} с"
+  },
+  "stop_reason": {
+    "traffic_signals": "Світлофор",
+    "level_crossing": "Залізничний переїзд",
+    "crossing": "Пішохідний перехід",
+    "stop_sign": "Знак «Стоп» / «Дати дорогу»",
+    "barrier": "Перешкода",
+    "junction": "Перехрестя",
+    "bus_stop": "Зупинка транспорту"
+  },
+  "stops": {
+    "reason_unknown": "Невідомо",
+    "slowed": "{{from}} → {{to}}"
   }
 }

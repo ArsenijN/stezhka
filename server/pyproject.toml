@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stezhka"
-version = "0.5.7"
+version = "0.5.8"
 description = "Self-hosted ride statistics, per-segment speeds and exploration-aware routing for cyclists"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.12"

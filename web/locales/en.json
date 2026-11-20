@@ -90,7 +90,9 @@
     "elevation_source_dem": "Elevation from the Copernicus terrain model. It measures the surface, so in forests and between buildings it can read treetop or roof height.",
     "more": "Show all details",
     "less": "Show only the essentials",
-    "elevation_info": "Where the elevation comes from"
+    "elevation_info": "Where the elevation comes from",
+    "slowdowns": "Sharp slowdowns",
+    "why_stopped": "Why stopped or slowed"
   },
   "chart": {
     "elevation": "Elevation",
@@ -105,7 +107,8 @@
   "stop_kind": {
     "stop": "Stop",
     "break": "Break",
-    "pause": "Recording paused"
+    "pause": "Recording paused",
+    "slowdown": "Sharp slowdown"
   },
   "upload": {
     "done_one": "Imported {{count}} new ride.",
@@ -269,5 +272,18 @@
     "lost": "{{time}} lost",
     "seconds_one": "{{count}} s",
     "seconds_other": "{{count}} s"
+  },
+  "stop_reason": {
+    "traffic_signals": "Traffic lights",
+    "level_crossing": "Railway crossing",
+    "crossing": "Pedestrian crossing",
+    "stop_sign": "Stop / give way sign",
+    "barrier": "Barrier",
+    "junction": "Junction",
+    "bus_stop": "Bus stop"
+  },
+  "stops": {
+    "reason_unknown": "Unknown",
+    "slowed": "{{from}} → {{to}}"
   }
 }

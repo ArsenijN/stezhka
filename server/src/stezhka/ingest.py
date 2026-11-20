@@ -64,6 +64,7 @@ def _ride_values(track: ParsedTrack, pr: ProcessedRide) -> dict:
         "dem_version": 0,
         "weather_version": 0,
         "match_version": 0,
+        "reason_version": 0,
         "enrich_error": None,
     }
 

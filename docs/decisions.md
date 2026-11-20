@@ -137,5 +137,20 @@ marks follow every re-match and basemap refresh with no migration, and a mark ma
 was matched simply lands later. Placed on the road line, not the raw track: marks from several
 rides on one street overlap instead of fanning out with GPS noise.
 
+## D12. Stop reasons: nearest explaining feature, never a guess
+A stop or sharp slowdown gets the first reason, in a fixed order, that has a feature within its
+radius: traffic signals 30 m (the node sits at the junction centre, the stop line 10-20 m before),
+level crossing 25 m, pedestrian crossing 15 m, stop / give-way sign 20 m, barrier 12 m, junction
+12 m, bus stop 20 m; otherwise "unknown". Signals, crossings and signs are not in the basemap tiles
+(checked: the `poi` layer has gates, bollards and bus stops, nothing for crossings), so they come
+from Overpass per 0.1° cell, cached in `osm_nodes`, refetched monthly - the same privacy level as
+the weather grid cell. Junctions come from the road graph (3+ segments meet). Reasons are computed
+after matching (the graph is open then) and again whenever new OSM data arrives.
+Sharp slowdowns: drop of 8+ km/h from 12+ km/h at 0.8+ m/s² within 2-5 s. Calibrated on real rides:
+the stored speed is median-smoothed, so decelerations read lower than the brakes' peak (max seen
+1.1 m/s²); this is about the top 1 % of 3 s windows, ~1 per ride. Only with the phone's Doppler
+speed: speed derived from positions is a ±5 s chord and hides braking. Braking that ends in a stop
+is the stop's story and is not listed twice.
+
 ## Roadmap
 Moved to [ROADMAP.md](../ROADMAP.md).

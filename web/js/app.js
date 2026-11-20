@@ -705,6 +705,7 @@ function renderStats() {
   const full = state.details || state.editing;
   const stops = r.stops.filter((s) => s.kind === 'stop');
   const stopTime = stops.reduce((a, s) => a + (s.end_t - s.start_t), 0);
+  const slowdowns = r.stops.filter((s) => s.kind === 'slowdown');
   const grid = el('div', { class: 'stat-grid' },
     stat(t('stats.distance'), fmt.distance(r.distance_m), 'primary'),
     stat(t('stats.moving_time'), fmt.duration(r.moving_s), 'primary'),
@@ -715,7 +716,10 @@ function renderStats() {
       stat(t('stats.elapsed_time'), fmt.duration(r.elapsed_s)),
       stat(t('stats.climb'), `↑ ${fmt.elevation(r.ascent_m)}  ↓ ${fmt.elevation(r.descent_m)}`, '', elevationInfoButton()),
       stat(t('stats.stops'), t('stats.stop_summary', { count: stops.length, time: fmt.duration(stopTime) })),
+      ...(slowdowns.length ? [stat(t('stats.slowdowns'), String(slowdowns.length))] : []),
       ...weatherStats(r));
+    const why = reasonSummary([...stops, ...slowdowns]);
+    if (why) grid.append(stat(t('stats.why_stopped'), why, 'wide'));
     const vs = usualText();
     if (vs) grid.append(stat(t('usual.title'), vs, 'wide'));
   }
@@ -734,6 +738,20 @@ function renderStats() {
     full && !r.weather ? el('p', { class: 'note' }, r.enrich_error ? t('weather.unavailable') : t('weather.pending')) : null,
     full ? compareRow(r) : null,
   ].filter((part) => part != null));
+}
+
+const STOP_REASONS = ['traffic_signals', 'level_crossing', 'crossing', 'stop_sign', 'barrier', 'junction', 'bus_stop'];
+
+/** "Traffic lights 3 · Junction 2 · Unknown 1" over stops and slowdowns, most common first. */
+function reasonSummary(list) {
+  if (!list.length) return null;
+  const counts = new Map();
+  for (const s of list) {
+    const k = STOP_REASONS.includes(s.reason) ? s.reason : '';
+    counts.set(k, (counts.get(k) || 0) + 1);
+  }
+  return [...counts].sort((a, b) => b[1] - a[1] || (a[0] ? 0 : 1) - (b[0] ? 0 : 1))
+    .map(([k, n]) => `${k ? t(`stop_reason.${k}`) : t('stops.reason_unknown')} ${n}`).join(' · ');
 }
 
 function windText(w) {

@@ -15,7 +15,7 @@ import urllib.error
 from collections.abc import Callable
 from pathlib import Path
 
-from . import weather
+from . import osm, weather
 from .db import tx
 from .dem import DEM_VERSION, Dem, smooth_by_distance
 from .process import climb
@@ -170,8 +170,10 @@ def enrich_all_pending(conn: sqlite3.Connection, dem: Dem, should_stop: Callable
 class EnrichWorker:
     """Background thread: enrich pending rides every `poll_s`, or right after wake()."""
 
-    def __init__(self, connect: Callable[[], sqlite3.Connection], dem_dir: Path, poll_s: float = 300.0):
+    def __init__(self, connect: Callable[[], sqlite3.Connection], dem_dir: Path, poll_s: float = 300.0,
+                 on_osm: Callable[[], None] | None = None):
         self._connect = connect
+        self._on_osm = on_osm  # new OSM nodes: stops need explaining again
         self._dem = Dem(dem_dir)
         self._poll_s = poll_s
         self._wake = threading.Event()
@@ -187,6 +189,10 @@ class EnrichWorker:
                 conn = self._connect()
                 try:
                     enrich_all_pending(conn, self._dem, self._stop.is_set)
+                    if osm.refresh(conn):
+                        conn.execute("UPDATE rides SET reason_version = 0")
+                        if self._on_osm:
+                            self._on_osm()
                 finally:
                     conn.close()
             except Exception:  # keep the worker alive; logged with traceback

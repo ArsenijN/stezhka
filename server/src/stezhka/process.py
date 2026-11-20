@@ -11,9 +11,9 @@ from dataclasses import dataclass, field
 from .clean import CleanParams, CleanReport, Point, clean
 from .geo import haversine_m
 from .gpx import GpxError, ParsedTrack
-from .stops import Stop, StopParams, detect_stops
+from .stops import Stop, StopParams, detect_slowdowns, detect_stops
 
-PROCESSING_VERSION = 2  # 2: plausibility gate in clean.py (GPS dropouts)
+PROCESSING_VERSION = 3  # 2: plausibility gate in clean.py (GPS dropouts); 3: sharp slowdowns
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +67,12 @@ def process(track: ParsedTrack, params: Params = Params()) -> ProcessedRide:
     if len(pts) < 2:
         raise GpxError("fewer than 2 usable points after cleaning")
     stops, stationary = detect_stops(pts, params.stops)
+    if report.speed_source == "device":
+        # braking into a stop is the stop's story; a slowdown is braking and riding on
+        halts = [s for s in stops if s.kind in ("stop", "break")]
+        slow = [d for d in detect_slowdowns(pts, params.stops)
+                if not any(h.start_t - 3.0 <= d.end_t and d.start_t <= h.end_t for h in halts)]
+        stops = sorted(stops + slow, key=lambda s: s.start_t)
 
     dist = 0.0
     moving_s = 0.0

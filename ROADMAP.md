@@ -37,6 +37,9 @@ Versions follow SemVer `0.y.z`: each milestone below bumps `y`; fixes and smalle
 
 ## UI ideas (when the need shows up)
 
+- **More animation**: e.g. going from the overview (no ride selected) to a ride should animate the
+  way the map already does - the stats panel and profile sliding in instead of snapping.
+
 - **Quicker comparing**: on phones the compare picker sits in the expanded stats. If comparing
   several rides in a row becomes common, move it to a chip on the map (pick, look, pick the next,
   without opening and closing the stats each time).
@@ -65,12 +68,20 @@ Since then:
   other rides (needs 2+ passes there): map toggle (orange = slower, blue = faster), tap for both
   speeds and the seconds gained or lost, and the total in the stats ("42 s faster than usual on
   3.1 km"). A red-light wait counts as time lost on that piece: that is where the time went.
+- v0.5.8: why you stopped: traffic lights, railway / pedestrian crossings, stop signs (OSM via
+  Overpass, per area cell), barriers and bus stops (basemap), junctions (road network), else
+  "unknown"; shown per stop and summed per ride. **Sharp slowdowns** (braking and riding on; only
+  from the phone's own Doppler speed, so OpenTracks, not Open GPX Tracker) get reasons too.
+  Elevation across bridges and tunnels is the line between their ends instead of the DEM's dip.
+  A map drag released over the profile no longer pins a point.
 
 Next:
 - Statistics split by wetness, time of day, bike; spread and sample count in the popup.
-- Junction costs: time lost at each junction / crossing (stops already detected).
-- Stop reasons from OSM within ~20 m: traffic signals, crossings, junctions; otherwise "unknown".
-- Elevation across `bridge=*` / `tunnel=*` ways interpolated instead of the DEM's river dip.
+- Junction costs: time lost at each junction / crossing, from the stops and their reasons.
+- Your own reason for a stop or slowdown (pedestrians, a car, a pothole, waiting for someone)
+  where the map has none; the "unknown" ones are the interesting ones.
+- Sharp slowdowns on Open GPX Tracker rides: from the second phone's Doppler speed when the trip
+  has one.
 
 ## v0.6 - ETA
 
