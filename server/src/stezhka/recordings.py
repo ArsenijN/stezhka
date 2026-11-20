@@ -81,17 +81,45 @@ def preferred_recorder(conn: sqlite3.Connection) -> str | None:
     return get_setting(conn, PREFERRED_KEY) or None
 
 
+QUALITY_TIE = 0.1  # recordings this close in quality count as equal: the preferred app decides
+WILD_MPS = 13.0  # a 1-second step faster than ~47 km/h is GPS jitter, not riding
+WILD_WEIGHT = 10.0
+
+
+def quality(conn: sqlite3.Connection, ride_id: int) -> float:
+    """How well a recording covers its ride: share of the time with a fix at least every 3 s,
+    minus a penalty for wild 1-second jumps. Measured on real two-phone trips: either phone can be
+    the better one (iOS throttled Open GPX Tracker to a fix every 6-12 s on one ride, with 46-79
+    km/h jitter in between, while OpenTracks recorded it fully)."""
+    pts = _track(conn, ride_id)
+    if len(pts) < 2 or pts[-1][0] <= pts[0][0]:
+        return 0.0
+    covered = wild = ones = 0
+    for (t0, la0, lo0), (t1, la1, lo1) in zip(pts, pts[1:]):
+        dt = t1 - t0
+        if dt <= 3:
+            covered += dt
+        if 0 < dt <= 1.5:
+            ones += 1
+            kx = math.cos(math.radians(la0))
+            if math.hypot((lo1 - lo0) * kx, la1 - la0) * 111_320 / dt > WILD_MPS:
+                wild += 1
+    return covered / (pts[-1][0] - pts[0][0]) - WILD_WEIGHT * wild / max(ones, 1)
+
+
 def _best(conn: sqlite3.Connection, group: list[int]) -> int:
-    """Default main recording: the preferred app's (Settings), else the densest sampling (more fixes
-    per second = more detail; with both phones logging every second this is close to a coin toss,
-    hence the setting)."""
-    marks = ",".join("?" * len(group))
+    """Default main recording: the best quality; among recordings of about equal quality the
+    preferred app's (Settings), then the better one."""
+    preferred = preferred_recorder(conn)
     rows = conn.execute(
-        f"SELECT id, creator IS ? AS preferred, point_count * 1.0 / MAX(elapsed_s, 1) AS rate"
-        f" FROM rides WHERE id IN ({marks}) ORDER BY preferred DESC, rate DESC, id",
-        [preferred_recorder(conn), *group],
+        f"SELECT id, creator, point_count * 1.0 / MAX(elapsed_s, 1) AS rate FROM rides"
+        f" WHERE id IN ({','.join('?' * len(group))})", group
     ).fetchall()
-    return rows[0]["id"]
+    scored = [(quality(conn, r["id"]), r["creator"] == preferred and preferred is not None, r["rate"], -r["id"], r["id"])
+              for r in rows]
+    top = max(q for q, *_ in scored)
+    close = [s for s in scored if s[0] >= top - QUALITY_TIE]
+    return max(close, key=lambda s: (s[1], s[2], s[0], s[3]))[4]  # preferred app, then denser
 
 
 # Recorders name tracks by their start time (OpenTracks: "2026-11-18T20:03+02"); not a user's name.

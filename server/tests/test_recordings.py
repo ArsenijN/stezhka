@@ -157,3 +157,14 @@ def test_annotated_copy_is_kept(client):
     full = upload(client, phone_a())
     assert client.get("/api/trash").json()["rides"] == []
     assert partial in [r["id"] for r in client.get(f"/api/rides/{full}").json()["recordings"]]
+
+
+def test_a_much_better_recording_wins_over_the_preferred_app(client, cfg):
+    from dataclasses import replace as rep
+
+    client.put("/api/recorders", json={"preferred": "Phone B"})
+    # phone B is the preferred app but recorded only every 10 s (throttled GPS)
+    b = upload(client, to_gpx([rep(p, north=p.north + 8) for p in commute().points[::10]]))
+    connect(cfg.db_path).execute("UPDATE rides SET creator = 'Phone B' WHERE id = ?", (b,))
+    a = upload(client, phone_a())
+    assert listed(client) == [a]

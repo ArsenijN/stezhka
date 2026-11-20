@@ -53,6 +53,9 @@ Next:
 - v0.5.2: going into a side path and back out no longer counts as riding it (it doubled the
   distance: "84 m path at 36 km/h"); routes between fixes limited to 1.5x the straight line + 30 m;
   short pieces at junctions get a speed measured over the ride around them.
+- v0.5.3: GPS-dropout cleaning (settling after gaps, acceleration gate); original GPX download and
+  zip export. v0.5.4: the main recording of a trip is the better-quality one (coverage, GPS jumps);
+  the preferred app only breaks ties - iOS throttled Open GPX Tracker on some rides.
 - Marks (v0.4.4) attached to the matched segments, shown on *My roads*.
 - Statistics split by wetness, time of day, bike; spread and sample count in the popup.
 - Junction costs: time lost at each junction / crossing (stops already detected).
