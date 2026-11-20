@@ -245,3 +245,35 @@ def test_standing_still_is_not_matched():
                  [0.0] * k + pts.dist, [0] * (k + n), [0] * k + [1] * n)
     trs = match(g, pts)
     assert all(g.segments[tr.segment_id].props["class"] == "minor" for tr in trs)
+
+
+def test_in_and_out_of_a_side_path_is_not_a_pass():
+    from stezhka.matching import Traversal, _merge
+
+    # 20 m into a side path and straight back out: two pieces on the same segment
+    trs = [Traversal("main", 0, 4, 0, 40, 40), Traversal("side", 4, 6, 0, 20, 20),
+           Traversal("side", 6, 8, 20, 0, 20), Traversal("main2", 8, 12, 0, 40, 40)]
+    merged = _merge(trs)
+    assert [t.segment_id for t in merged] == ["main", "main2"]  # drifting fix, dropped
+    # a long dead-end trip and back is real riding, but counts its length once, not twice
+    long = _merge([Traversal("lane", 0, 10, 0, 50, 50), Traversal("lane", 10, 20, 50, 0, 50)])
+    assert len(long) == 1 and long[0].dist_m == 50 and long[0].reversed
+
+
+def test_short_pieces_take_their_speed_from_the_ride_around_them(tmp_path):
+    from stezhka.ingest import import_bytes
+    from synth import commute
+
+    conn = connect(tmp_path / "db.sqlite3")
+    rid = import_bytes(conn, tmp_path / "raw", commute().gpx(), "a.gpx").ride_id
+    conn.executemany(
+        "INSERT INTO road_segments(id, class, length_m, geom) VALUES (?, 'minor', ?, '[]')",
+        [("a", 40.0), ("tiny", 9.0), ("b", 40.0)],
+    )
+    # 5 m/s, but the 9 m piece got only 0.66 s of the time between two fixes (13.6 m/s alone)
+    conn.executemany(
+        "INSERT INTO ride_segments(ride_id, seq, segment_id, enter_t, exit_t, from_off, to_off, dist_m) VALUES (?,?,?,?,?,?,?,?)",
+        [(rid, 0, "a", 0, 8, 0, 40, 40), (rid, 1, "tiny", 8, 8.66, 0, 9, 9), (rid, 2, "b", 8.66, 16.66, 0, 40, 40)],
+    )
+    tiny = next(s for s in segments.road_stats(conn) if s["id"] == "tiny")
+    assert 4.5 < tiny["speed_mps"] < 6.5

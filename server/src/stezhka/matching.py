@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 from .roads import Graph, Segment, grid, lonlat, metres_per_unit
 
-MATCH_VERSION = 2
+MATCH_VERSION = 3
 SIGMA_M = 10.0  # GPS noise (phones: ~5 m in the open, 15 m+ in a pocket or between buildings)
 BETA_M = 10.0  # tolerance for route length vs straight-line difference
 RADIUS_M = 35.0  # candidates within this distance of a fix
@@ -31,6 +31,8 @@ MAX_GAP_S = 60.0  # longer gap between fixes: start a new chain
 # for a whole street even with every fix closer to the sidewalk (seen on prospekt Svobody).
 JUMP_M = 25.0  # a sideways switch to another way this close is allowed without a mapped link
 JUMP_COST = 1.0  # log-probability cost of such a switch (~ 10 m of route mismatch)
+ROUTE_FACTOR, ROUTE_SLACK_M = 1.5, 30.0  # longest route allowed between two fixes: gc * F + S
+MIN_EXCURSION_M = 30.0  # in and back out of a way by less than this = a fix drifting, not riding
 MAX_SPEED_MPS = 16.0  # ~58 km/h: a route needing more than this between two fixes is not real
 
 
@@ -51,7 +53,8 @@ class Traversal:
     exit_t: float
     from_off: float  # metres from seg.a where the ride entered / left it
     to_off: float
-    dist_m: float
+    dist_m: float  # how much of the segment was covered (not the sum of back-and-forth)
+    reversed: bool = False  # turned back on it (went in and came out the same end)
 
 
 class _Index:
@@ -210,7 +213,7 @@ def _viterbi(g, pts, keep, cands, chain):
         ka, kb = chain[s - 1], chain[s]
         ia, ib = keep[ka], keep[kb]
         gc = _gc(pts, ia, ib)
-        limit = gc * 2.5 + 60.0
+        limit = gc * ROUTE_FACTOR + ROUTE_SLACK_M
         prev_c, cur_c = cands[ka], cands[kb]
         new = [-math.inf] * len(cur_c)
         bk: list[tuple[int, str | None]] = [(-1, None)] * len(cur_c)
@@ -309,17 +312,27 @@ def _traverse(g: Graph, pts: Points, keep, chain, picks) -> list[Traversal]:
 
 
 def _merge(trs: list[Traversal]) -> list[Traversal]:
-    """Join consecutive pieces on the same segment into one traversal."""
+    """Join consecutive pieces on the same segment into one traversal. Distance is the covered extent:
+    going 40 m into a side path and back is 40 m, not 80 (summing them doubled speeds). A short
+    in-and-out is a fix drifting toward a side way at a corner, not riding it: dropped."""
     out: list[Traversal] = []
+    span: list[list[float]] = []  # [lo, hi, direction] per traversal in `out`
     for tr in trs:
+        d = tr.to_off - tr.from_off
         if out and out[-1].segment_id == tr.segment_id and abs(out[-1].exit_t - tr.enter_t) < 1e-6:
-            last = out[-1]
+            last, sp = out[-1], span[-1]
             last.exit_t = tr.exit_t
             last.to_off = tr.to_off
-            last.dist_m += tr.dist_m
+            sp[0], sp[1] = min(sp[0], tr.from_off, tr.to_off), max(sp[1], tr.from_off, tr.to_off)
+            if d and sp[2] and (d > 0) != (sp[2] > 0):
+                last.reversed = True
+            if d:
+                sp[2] = d
+            last.dist_m = sp[1] - sp[0]
         elif tr.dist_m > 0 or tr.exit_t > tr.enter_t:
-            out.append(tr)
-    return out
+            out.append(Traversal(tr.segment_id, tr.enter_t, tr.exit_t, tr.from_off, tr.to_off, abs(d)))
+            span.append([min(tr.from_off, tr.to_off), max(tr.from_off, tr.to_off), d])
+    return [t for t in out if not (t.reversed and t.dist_m < MIN_EXCURSION_M)]
 
 
 def segment_geometry(seg: Segment) -> list[tuple[float, float]]:

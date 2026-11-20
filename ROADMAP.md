@@ -50,6 +50,9 @@ Next:
 - Per-ride view of its segments: where this ride was slower/faster than usual.
 - v0.5.1: sidewalks reachable without a mapped link, impossible speeds rejected, standing fixes
   ignored, duplicate exports of one recording trashed automatically. Sidewalks stay separate.
+- v0.5.2: going into a side path and back out no longer counts as riding it (it doubled the
+  distance: "84 m path at 36 km/h"); routes between fixes limited to 1.5x the straight line + 30 m;
+  short pieces at junctions get a speed measured over the ride around them.
 - Marks (v0.4.4) attached to the matched segments, shown on *My roads*.
 - Statistics split by wetness, time of day, bike; spread and sample count in the popup.
 - Junction costs: time lost at each junction / crossing (stops already detected).

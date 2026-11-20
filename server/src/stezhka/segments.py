@@ -26,8 +26,10 @@ log = logging.getLogger(__name__)
 
 SOURCE_KEY = "roads_source"  # settings: which basemap the stored matches were made on
 FULL_PASS = 0.6  # a pass counts for speed when it covers this share of the segment
-MIN_PASS_S = 2.0  # ... and lasts at least this long (shorter ones are timing noise)
-MAX_PASS_MPS = 16.0  # ... and is not faster than this (a bad match, never a real ride here)
+FULL_PASS_MISSING_M = 8.0  # ... or misses at most this much of it (short pieces at junctions)
+MIN_PASS_S = 2.0  # kept for reference: shorter passes borrow time from their neighbours
+CONTEXT_S = 4.0  # a pass's speed is measured over at least this much of the ride around it
+MAX_PASS_MPS = 16.0  # faster than this is a bad match, never a real ride here
 NAME_NEAR_UNITS = 10  # ~4 m: a street name line this close to a segment's middle names it
 
 
@@ -184,24 +186,44 @@ def match_pending(conn: sqlite3.Connection, basemap_dir: Path, should_stop=lambd
 
 
 def road_stats(conn: sqlite3.Connection) -> list[dict]:
-    """Every ridden segment with how often and how fast (main recordings of non-trashed rides)."""
+    """Every ridden segment with how often and how fast (main recordings of non-trashed rides).
+
+    A pass's speed is its covered distance over its time. A pass under MIN_PASS_S (a few metres at a
+    junction) is too coarse alone - time between two fixes is split by distance - so it takes the
+    speed of the surrounding stretch of the same ride (neighbouring passes up to CONTEXT_S).
+    """
     rows = conn.execute(
         """
-        SELECT rs.segment_id, rs.ride_id, rs.enter_t, rs.exit_t, rs.dist_m, s.length_m
+        SELECT rs.segment_id, rs.ride_id, rs.seq, rs.enter_t, rs.exit_t, rs.dist_m, s.length_m
         FROM ride_segments rs
         JOIN rides r ON r.id = rs.ride_id AND r.primary_id IS NULL AND r.trashed_at IS NULL
         JOIN road_segments s ON s.id = rs.segment_id
+        ORDER BY rs.ride_id, rs.seq
         """
     ).fetchall()
     per: dict[str, dict] = {}
+    by_ride: dict[int, list] = {}
     for r in rows:
-        st = per.setdefault(r["segment_id"], {"rides": set(), "passes": 0, "speeds": [], "last_t": 0.0})
-        st["rides"].add(r["ride_id"])
-        st["passes"] += 1
-        st["last_t"] = max(st["last_t"], r["exit_t"])
-        dt = r["exit_t"] - r["enter_t"]
-        if r["dist_m"] >= FULL_PASS * r["length_m"] and dt >= MIN_PASS_S and r["dist_m"] / dt <= MAX_PASS_MPS:
-            st["speeds"].append(r["dist_m"] / dt)
+        by_ride.setdefault(r["ride_id"], []).append(r)
+    for seq in by_ride.values():
+        for k, r in enumerate(seq):
+            st = per.setdefault(r["segment_id"], {"rides": set(), "passes": 0, "speeds": [], "last_t": 0.0})
+            st["rides"].add(r["ride_id"])
+            st["passes"] += 1
+            st["last_t"] = max(st["last_t"], r["exit_t"])
+            full = r["dist_m"] >= FULL_PASS * r["length_m"] or r["length_m"] - r["dist_m"] <= FULL_PASS_MISSING_M
+            if not full:
+                continue
+            d, t = r["dist_m"], r["exit_t"] - r["enter_t"]
+            lo = hi = k
+            while t < CONTEXT_S and (lo > 0 or hi < len(seq) - 1):
+                for j in (lo - 1, hi + 1):
+                    if 0 <= j < len(seq) and abs(seq[j]["enter_t"] - r["enter_t"]) < 60:
+                        d += seq[j]["dist_m"]
+                        t += seq[j]["exit_t"] - seq[j]["enter_t"]
+                lo, hi = max(lo - 1, 0), min(hi + 1, len(seq) - 1)
+            if t > 0 and d / t <= MAX_PASS_MPS:
+                st["speeds"].append(d / t)
     if not per:
         return []
     segs = {s["id"]: s for s in conn.execute(
