@@ -20,6 +20,19 @@ from .gpx import RawPoint
 class CleanParams:
     max_hacc_m: float = 30.0  # points reported less accurate than this are dropped
     max_speed_mps: float = 25.0  # ~90 km/h; faster jumps between fixes are GPS glitches
+    # Plausibility gate (step 3b): a bike cannot speed up from 15 to 60 km/h in a second. After a
+    # GPS dropout the first fixes can be tens of metres off for several seconds (seen: "60.8 km/h"
+    # across a roundabout); a single-spike rule at 90 km/h does not catch a run of them.
+    max_accel_mps2: float = 2.5  # hard sprint on a bike
+    accel_horizon_s: float = 3.0  # after a gap you are still riding at about the same speed
+    # GPS error drifts slowly: consecutive fixes rarely differ by more than a few metres of error,
+    # more the longer apart they are
+    noise_m: float = 5.0
+    noise_per_s: float = 1.5
+    noise_max_m: float = 15.0
+    gap_factor: float = 3.0  # a gap = more than this x the recording's usual interval (and > 3 s)
+    settle_points: int = 3  # after a gap, fixes count once this many move consistently again
+    reanchor_points: int = 3  # this many mutually consistent fixes override the last good one
     device_speed_min_share: float = 0.8  # use device speed if this share of points has it
     derived_speed_half_window_s: float = 5.0  # chord over +-5 s; robust to jitter at stops
     speed_median_window: int = 5  # odd number of points
@@ -91,6 +104,99 @@ def _drop_spikes(pts: list[Point], max_v: float) -> tuple[list[Point], int]:
     return pts, dropped
 
 
+def _ref_speed(acc: list[Point], horizon_s: float = 5.0) -> float:
+    """Speed of the accepted track over its last few seconds."""
+    if len(acc) < 2:
+        return 0.0
+    last = acc[-1]
+    j = len(acc) - 2
+    while j > 0 and last.t - acc[j].t < horizon_s and acc[j - 1].segment == last.segment:
+        j -= 1
+    a = acc[j]
+    return haversine_m(a.lat, a.lon, last.lat, last.lon) / (last.t - a.t) if last.t > a.t else 0.0
+
+
+def _reachable(a: Point, b: Point, v_ref: float, p: "CleanParams") -> bool:
+    dt = b.t - a.t
+    v = min(p.max_speed_mps, v_ref + p.max_accel_mps2 * min(dt, p.accel_horizon_s))
+    noise = min(p.noise_m + p.noise_per_s * dt, p.noise_max_m)
+    return haversine_m(a.lat, a.lon, b.lat, b.lon) <= v * dt + noise
+
+
+def _settle_after_gaps(pts: list[Point], p: "CleanParams") -> tuple[list[Point], int]:
+    """After a gap in the recording (GPS dropout), a phone's first fixes are often tens of metres
+    off while it re-acquires. Drop fixes after a gap until `settle_points` consecutive fixes move
+    consistently with the speed before the gap."""
+    if len(pts) < 3:
+        return pts, 0
+    steps = sorted(b.t - a.t for a, b in zip(pts, pts[1:]) if a.segment == b.segment)
+    usual = steps[len(steps) // 2] if steps else 1.0
+    gap_s = max(3.0, p.gap_factor * usual)
+    out: list[Point] = [pts[0]]
+    dropped = 0
+    i = 1
+    while i < len(pts):
+        pt = pts[i]
+        if pt.segment != out[-1].segment or pt.t - out[-1].t <= gap_s:
+            out.append(pt)
+            i += 1
+            continue
+        v_ref = _ref_speed(out)
+        j = i  # find the first fix from which settle_points fixes move consistently
+        while j + p.settle_points - 1 < len(pts):
+            run = pts[j:j + p.settle_points]
+            if all(a.segment == run[0].segment for a in run) and all(
+                _reachable(a, b, v_ref, p) for a, b in zip(run, run[1:])
+            ):
+                break
+            j += 1
+        else:
+            j = i  # never settles: keep the rest as recorded
+        dropped += j - i
+        out.append(pts[j])
+        i = j + 1
+    return out, dropped
+
+
+def _drop_implausible(pts: list[Point], p: "CleanParams") -> tuple[list[Point], int]:
+    """Forward gate: keep a fix only if it can be reached from the last kept one at a speed close to
+    the recent riding speed (+ acceleration + GPS noise). When `reanchor_points` rejected fixes in a
+    row agree with each other, the gate re-anchors on them and drops the kept fixes since the last
+    one they agree with (the bad fixes it had accepted)."""
+    acc: list[Point] = []
+    pending: list[Point] = []
+    dropped = 0
+    for pt in pts:
+        if not acc or acc[-1].segment != pt.segment:
+            dropped += len(pending)  # a run of rejected fixes at the end of a segment
+            pending = []
+            acc.append(pt)
+            continue
+        if _reachable(acc[-1], pt, _ref_speed(acc), p) and not pending:
+            acc.append(pt)
+            continue
+        # rejected (or already collecting a run): does it continue the run of rejected fixes?
+        if pending and not _reachable(pending[-1], pt, _ref_speed(pending), p):
+            dropped += len(pending)
+            pending = []
+        pending.append(pt)
+        if pending and _reachable(acc[-1], pending[0], _ref_speed(acc), p):
+            acc.extend(pending)  # the run fits after all (e.g. after a long gap)
+            pending = []
+        elif len(pending) >= p.reanchor_points:
+            # the run is consistent: trust it; drop kept fixes it cannot be reached from
+            back = 0
+            while len(acc) > 1 and back < 10 and not _reachable(acc[-1], pending[0], _ref_speed(acc[:-1]), p) \
+                    and acc[-2].segment == pending[0].segment:
+                acc.pop()
+                back += 1
+            dropped += back
+            acc.extend(pending)
+            pending = []
+    dropped += len(pending)
+    return acc, dropped
+
+
 def _segments(pts: list[Point]) -> list[tuple[int, int]]:
     """[start, end) index ranges of runs with the same segment id."""
     out = []
@@ -157,8 +263,11 @@ def clean(raw: list[RawPoint], params: CleanParams = CleanParams()) -> tuple[lis
     else:
         rep.notes.append("accuracy_filter_skipped_all_points_inaccurate")
 
-    # 3. Isolated position spikes.
+    # 3. Isolated position spikes, then runs of implausible fixes (e.g. after a GPS dropout).
     pts, rep.dropped_spikes = _drop_spikes(pts, params.max_speed_mps)
+    pts, unsettled = _settle_after_gaps(pts, params)
+    pts, implausible = _drop_implausible(pts, params)
+    rep.dropped_spikes += unsettled + implausible
 
     # 4. Speed per point, computed within each recorder segment.
     with_dev = sum(1 for p in pts if p.device_speed is not None)

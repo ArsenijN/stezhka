@@ -27,7 +27,9 @@ def test_reprocess_keeps_id_and_user_fields(tmp_path):
     done, failed = reprocess(conn, raw)
     assert (done, failed) == (1, [])
     row = conn.execute("SELECT id, bike_id, notes, processing_version FROM rides").fetchone()
-    assert tuple(row) == (rid, 1, "wet", 1)
+    from stezhka.process import PROCESSING_VERSION
+
+    assert tuple(row) == (rid, 1, "wet", PROCESSING_VERSION)
     assert reprocess(conn, raw) == (0, [])  # nothing outdated any more
 
 

@@ -19,7 +19,7 @@ from fastapi import Depends, FastAPI, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -31,6 +31,7 @@ from .dem import ATTRIBUTION as DEM_ATTRIBUTION
 from .enrich import EnrichWorker
 from . import feelings, recordings, segments
 from .ingest import (
+    reprocess,
     MAX_FILE_BYTES, TRASH_DAYS, InboxWatcher, TrashPurger, delete_ride, import_bytes, restore_ride, trash_ride,
 )
 from .weather import ATTRIBUTION as WEATHER_ATTRIBUTION
@@ -190,6 +191,12 @@ def create_app(cfg: Config) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         conn = open_db()  # create/migrate the schema before serving
+        try:
+            done, failed = reprocess(conn, cfg.raw_dir)  # rides cleaned by an older pipeline version
+            if done or failed:
+                log.info("reprocessed %d ride(s) with the current cleaning; failed: %s", done, failed)
+        except Exception:
+            log.exception("reprocessing failed")
         try:
             linked = recordings.link_all(conn)  # rides imported before linking existed, or missed
             if linked:
@@ -423,6 +430,42 @@ def create_app(cfg: Config) -> FastAPI:
             (ride_id,),
         ).fetchall()
         return {"fields": POINT_FIELDS, "rows": [list(r) for r in rows]}
+
+    # --- the original files: one ride, or everything as a zip --------------------------------------
+
+    def _download_name(row) -> str:
+        when = time.strftime("%Y-%m-%d_%H-%M", time.localtime(row["started_at"]))
+        app_name = "".join(ch for ch in (row["creator"] or "") if ch.isalnum())[:24]
+        return f"stezhka_{when}_{app_name or 'ride'}_{row['id']}.gpx"
+
+    @app.get("/api/rides/{ride_id}/gpx")
+    def ride_gpx(ride_id: int, conn: sqlite3.Connection = Depends(require_auth)):
+        row = conn.execute(
+            "SELECT id, raw_path, started_at, creator FROM rides WHERE id = ? AND trashed_at IS NULL", (ride_id,)
+        ).fetchone()
+        path = cfg.raw_dir / row["raw_path"] if row else None
+        if not row or not path.is_file():
+            raise ApiError(404, ErrorCode.NOT_FOUND)
+        return Response(path.read_bytes(), media_type="application/gpx+xml",
+                        headers={"Content-Disposition": f'attachment; filename="{_download_name(row)}"'})
+
+    @app.get("/api/export.zip")
+    def export_zip(conn: sqlite3.Connection = Depends(require_auth)):
+        import io
+        import zipfile
+
+        rows = conn.execute(
+            "SELECT id, raw_path, started_at, creator FROM rides WHERE trashed_at IS NULL ORDER BY started_at"
+        ).fetchall()
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for r in rows:
+                path = cfg.raw_dir / r["raw_path"]
+                if path.is_file():
+                    z.write(path, _download_name(r))
+        name = time.strftime("stezhka-rides-%Y-%m-%d.zip")
+        return Response(buf.getvalue(), media_type="application/zip",
+                        headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
     @app.post("/api/rides", status_code=201)
     async def upload_ride(request: Request, response: Response, conn: sqlite3.Connection = Depends(require_upload_auth)):

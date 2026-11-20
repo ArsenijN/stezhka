@@ -100,3 +100,38 @@ def test_climb_uses_hysteresis():
     s = run(b).summary
     assert s.ascent_m == pytest.approx(49.5, abs=4)
     assert s.descent_m < 3
+
+
+def test_gps_dropout_with_bad_fixes_after_it_is_cleaned():
+    """iPhone-like track (no device speed): 8 s without fixes, then three fixes 45/30/15 m off the
+    road converging back - the "60.8 km/h across a roundabout" seen on a real ride."""
+    from dataclasses import replace
+
+    from synth import Builder, to_gpx
+
+    from stezhka.gpx import parse_gpx
+    from stezhka.process import process
+
+    b = Builder().ride(60, 5.0, device_speed=False).ride(60, 5.0, device_speed=False)
+    pts = [p for p in b.points if not 60 < p.t <= 68]  # the dropout
+    bad = {69: 45.0, 70: 30.0, 71: 15.0}
+    pts = [replace(p, north=p.north + bad[int(p.t)]) if int(p.t) in bad else p for p in pts]
+    ride = process(parse_gpx(to_gpx(pts)))
+    assert ride.summary.max_mps * 3.6 < 25  # was ~60 km/h
+    assert ride.report.dropped_spikes >= 2
+    assert abs(ride.summary.distance_m - 600) < 40
+
+
+def test_hard_but_real_acceleration_is_kept():
+    from synth import Builder
+
+    from stezhka.gpx import parse_gpx
+    from stezhka.process import process
+
+    b = Builder().stand(10)
+    for v in (2.0, 4.0, 6.0, 8.0, 10.0, 11.0):  # 0 -> 40 km/h in ~6 s, then hold
+        b.ride(1, v, device_speed=False)
+    b.ride(30, 11.0, device_speed=False)
+    ride = process(parse_gpx(b.gpx()))
+    assert ride.report.dropped_spikes == 0
+    assert ride.summary.max_mps * 3.6 > 37

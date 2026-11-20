@@ -250,3 +250,22 @@ def test_upload_key_can_only_upload(client, cfg):
     assert client.delete(f"/api/tokens/{created['id']}").json() == {"ok": True}
     client.post("/api/logout")
     assert client.post("/api/rides", content=commute().gpx(), headers=h).status_code == 401  # revoked
+
+
+def test_download_original_gpx_and_export_zip(client, cfg):
+    import io
+    import zipfile
+
+    login(client, cfg)
+    data = commute().gpx()
+    rid = client.post("/api/rides", content=data).json()["id"]
+    r = client.get(f"/api/rides/{rid}/gpx")
+    assert r.status_code == 200 and r.content == data  # byte for byte the uploaded file
+    assert "attachment" in r.headers["content-disposition"] and ".gpx" in r.headers["content-disposition"]
+    z = zipfile.ZipFile(io.BytesIO(client.get("/api/export.zip").content))
+    assert [z.read(n) for n in z.namelist()] == [data]
+    client.delete(f"/api/rides/{rid}")  # trashed rides are not exported
+    assert client.get(f"/api/rides/{rid}/gpx").status_code == 404
+    assert zipfile.ZipFile(io.BytesIO(client.get("/api/export.zip").content)).namelist() == []
+    client.post("/api/logout")
+    assert client.get("/api/export.zip").status_code == 401

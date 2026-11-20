@@ -7,7 +7,7 @@ import { RideMap, SPEED_STOPS } from './map.js';
 import { ProfileChart } from './chart.js';
 import { initSettings } from './settings.js';
 import { NEGATIVE_TAGS, POSITIVE_TAGS, markKind, tagsFor } from './feelings.js';
-import { $, el, errorText, icon, iconButton, rideTitle, TIMESTAMP_NAME, toast } from './ui.js';
+import { $, el, errorText, icon, iconButton, iconLink, rideTitle, TIMESTAMP_NAME, toast } from './ui.js';
 
 const state = {
   rides: [],
@@ -260,6 +260,7 @@ function titleRow(r) {
       el('span', { class: 'muted' }, ' · ', fmt.rideDate(r.started_at)),
       r.bike_name ? el('span', { class: 'ride-bike' }, ' · ', r.bike_name) : null),
     el('div', { class: 'ride-actions' },
+      iconLink('download', t('actions.download_gpx'), `api/rides/${r.id}/gpx`, { download: '' }),
       iconButton('edit', t('actions.edit'), () => { state.editing = true; state.details = true; renderStats(); }),
       iconButton('trash', t('actions.delete'), onDelete, 'danger'),
       more),

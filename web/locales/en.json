@@ -14,7 +14,8 @@
     "cancel": "Cancel",
     "settings": "Settings",
     "close": "Close",
-    "undo": "Undo"
+    "undo": "Undo",
+    "download_gpx": "Download the original GPX"
   },
   "settings": {
     "language": "Language",
@@ -55,7 +56,10 @@
     "main_recording_help": "When two phones record the same trip, the ride shows this app's recording; the other one stays available for comparing. “Make main” on a ride overrides this for that ride.",
     "main_recording_auto": "Automatic (the most detailed recording)",
     "main_recording_changed_one": "Updated {{count}} ride.",
-    "main_recording_changed_other": "Updated {{count}} rides."
+    "main_recording_changed_other": "Updated {{count}} rides.",
+    "export": "Export",
+    "export_help": "Every ride as its original GPX file (also the second phone’s recordings), in one .zip.",
+    "export_all": "Download all rides (.zip)"
   },
   "rides": {
     "title": "Rides",

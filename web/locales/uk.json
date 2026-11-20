@@ -14,7 +14,8 @@
     "cancel": "Скасувати",
     "settings": "Налаштування",
     "close": "Закрити",
-    "undo": "Скасувати"
+    "undo": "Скасувати",
+    "download_gpx": "Завантажити оригінальний GPX"
   },
   "settings": {
     "language": "Мова",
@@ -59,7 +60,10 @@
     "main_recording_changed_one": "Оновлено {{count}} поїздку.",
     "main_recording_changed_few": "Оновлено {{count}} поїздки.",
     "main_recording_changed_many": "Оновлено {{count}} поїздок.",
-    "main_recording_changed_other": "Оновлено {{count}} поїздки."
+    "main_recording_changed_other": "Оновлено {{count}} поїздки.",
+    "export": "Експорт",
+    "export_help": "Усі поїздки як оригінальні GPX-файли (також записи другого телефона), в одному .zip.",
+    "export_all": "Завантажити всі поїздки (.zip)"
   },
   "rides": {
     "title": "Поїздки",

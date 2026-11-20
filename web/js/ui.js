@@ -52,6 +52,7 @@ const ICONS = {
   edit: '<path d="M4 20h4L19 9l-4-4L4 16v4z"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
   chevron: '<path d="M6 9l6 6 6-6"/>',
+  download: '<path d="M12 4v11M7 10l5 5 5-5M5 19h14"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>',
 };
 
@@ -62,6 +63,11 @@ export function icon(name) {
   svg.setAttribute('class', `icon icon-${name}`);
   svg.innerHTML = ICONS[name];
   return svg;
+}
+
+/** Icon-only link (e.g. a file download). */
+export function iconLink(name, label, href, extra = {}) {
+  return el('a', { class: 'btn icon-btn', 'aria-label': label, title: label, href, ...extra }, icon(name));
 }
 
 /** Icon-only button; the label is its accessible name and tooltip. */

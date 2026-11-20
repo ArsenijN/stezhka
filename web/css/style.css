@@ -57,6 +57,7 @@ h1, h2 { margin: 0; }
   font: inherit; cursor: pointer;
 }
 .btn:hover { background: var(--surface-2); }
+a.btn { text-decoration: none; }
 .btn:focus-within, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .btn.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; justify-content: center; font-weight: 600; }
 .btn.ghost { border-color: transparent; background: transparent; }

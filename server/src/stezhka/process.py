@@ -13,7 +13,7 @@ from .geo import haversine_m
 from .gpx import GpxError, ParsedTrack
 from .stops import Stop, StopParams, detect_stops
 
-PROCESSING_VERSION = 1
+PROCESSING_VERSION = 2  # 2: plausibility gate in clean.py (GPS dropouts)
 
 
 @dataclass(frozen=True, slots=True)
