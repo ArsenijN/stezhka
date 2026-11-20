@@ -183,9 +183,16 @@ def test_trash_is_purged_after_trash_days(client, cfg):
     from stezhka.ingest import TRASH_DAYS, purge_trash
 
     login(client, cfg)
-    keep = client.post("/api/rides", content=commute().gpx()).json()["id"]
-    old = client.post("/api/rides", content=commute().ride(30, 4.0).gpx()).json()["id"]
-    recent = client.post("/api/rides", content=commute().ride(40, 4.0).gpx()).json()["id"]
+    from dataclasses import replace
+
+    from synth import to_gpx
+
+    def ride_at(hour):  # separate rides an hour apart (not recordings of one trip)
+        return to_gpx([replace(p, t=p.t + 3600 * hour) for p in commute().points])
+
+    keep = client.post("/api/rides", content=ride_at(0)).json()["id"]
+    old = client.post("/api/rides", content=ride_at(1)).json()["id"]
+    recent = client.post("/api/rides", content=ride_at(2)).json()["id"]
     client.delete(f"/api/rides/{old}")
     client.delete(f"/api/rides/{recent}")
     conn = connect(cfg.db_path)

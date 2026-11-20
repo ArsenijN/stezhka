@@ -120,8 +120,17 @@ hash of class + geometry: stable while the map does not change there; a basemap 
 every ride.
 Matching: HMM after Newson & Krumm (σ 10 m, β 10 m, candidates within 35 m, a fix every ~8 m),
 routes between candidates by bounded Dijkstra; the full route is reconstructed, so short segments
-between fixes count too. On the two-phone pairs, 71-85 % of the matched length is on identical
-segments; the rest is road vs the sidewalk next to it (5-15 m apart, GPS cannot tell).
+between fixes count too.
+v0.5.1 fixes from real rides: (1) a **sideways switch** of up to 25 m between ways the map does not
+link (road <-> its sidewalk, linked only at a few crossings) - without it a ride that began on the
+road stayed there for a whole street although every fix was closer to the sidewalk (prospekt
+Svobody: fixes 4 m from the footway, 8 m from the road; the user rides the sidewalk there);
+(2) routes that would need > 16 m/s between two fixes are rejected (a detour through the network
+had produced "133 km/h" on a 36 m yard lane); (3) fixes while standing are not matched (tangles
+near home). Sidewalks stay separate segments in the statistics: the user's sidewalk riding has more
+slowdowns (pedestrians, puddles) than the road, so merging them would blur both.
+Two-phone agreement on identical segments: 90 % and 78 %; 52 % on the pair with the chest-pocket
+phone that lags ~14 m (it sits between road and sidewalk; it is not the main recording).
 
 ## Roadmap
 Moved to [ROADMAP.md](../ROADMAP.md).

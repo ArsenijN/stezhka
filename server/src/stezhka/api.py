@@ -194,6 +194,9 @@ def create_app(cfg: Config) -> FastAPI:
             linked = recordings.link_all(conn)  # rides imported before linking existed, or missed
             if linked:
                 log.info("linked %d recording group(s)", linked)
+            copies = recordings.drop_all_copies(conn)  # the same recording uploaded twice
+            if copies:
+                log.info("moved %d duplicate export(s) to the trash", copies)
         except Exception:
             log.exception("linking recordings failed")
         finally:

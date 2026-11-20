@@ -26,6 +26,8 @@ log = logging.getLogger(__name__)
 
 SOURCE_KEY = "roads_source"  # settings: which basemap the stored matches were made on
 FULL_PASS = 0.6  # a pass counts for speed when it covers this share of the segment
+MIN_PASS_S = 2.0  # ... and lasts at least this long (shorter ones are timing noise)
+MAX_PASS_MPS = 16.0  # ... and is not faster than this (a bad match, never a real ride here)
 NAME_NEAR_UNITS = 10  # ~4 m: a street name line this close to a segment's middle names it
 
 
@@ -93,8 +95,10 @@ class _Names:
 
 
 def _points(conn: sqlite3.Connection, ride_id: int) -> Points:
-    rows = conn.execute("SELECT t, lat, lon, dist, segment FROM points WHERE ride_id = ? ORDER BY idx", (ride_id,)).fetchall()
-    return Points(*[list(col) for col in zip(*rows)]) if rows else Points([], [], [], [], [])
+    rows = conn.execute(
+        "SELECT t, lat, lon, dist, segment, moving FROM points WHERE ride_id = ? ORDER BY idx", (ride_id,)
+    ).fetchall()
+    return Points(*[list(col) for col in zip(*rows)]) if rows else Points([], [], [], [], [], [])
 
 
 def match_ride(conn: sqlite3.Connection, source: RoadSource, names: _Names, ride_id: int) -> int:
@@ -196,7 +200,7 @@ def road_stats(conn: sqlite3.Connection) -> list[dict]:
         st["passes"] += 1
         st["last_t"] = max(st["last_t"], r["exit_t"])
         dt = r["exit_t"] - r["enter_t"]
-        if r["dist_m"] >= FULL_PASS * r["length_m"] and dt > 0:
+        if r["dist_m"] >= FULL_PASS * r["length_m"] and dt >= MIN_PASS_S and r["dist_m"] / dt <= MAX_PASS_MPS:
             st["speeds"].append(r["dist_m"] / dt)
     if not per:
         return []

@@ -13,6 +13,7 @@ import logging
 import math
 import re
 import sqlite3
+import time
 
 from .db import get_setting, set_setting, tx
 
@@ -142,7 +143,8 @@ def link_new(conn: sqlite3.Connection, ride_id: int) -> int | None:
             _merge_user_fields(conn, group, best)
             _make_main(conn, group, best)
         log.info("rides %s are recordings of one trip; main %s", group, best)
-        return best
+        drop_copies(conn, best)
+        return main_of(conn, best)
     return None
 
 
@@ -223,3 +225,59 @@ def set_preferred_recorder(conn: sqlite3.Connection, creator: str | None) -> int
             set_main(conn, best, chosen=False)
             changed += 1
     return changed
+
+
+COPY_SLACK_S = 3.0  # time slack when checking that one recording lies within another
+COPY_MAX_M = 3.0  # median distance: a copy of the same recording, not a second phone
+
+
+def drop_copies(conn: sqlite3.Connection, main_id: int) -> list[int]:
+    """Trash recordings that are copies of another in the same trip: same app, time range inside
+    the other's, track on top of it (one recording exported twice, e.g. by hand mid-ride and by the
+    automatic export at the end). Lossless: the kept one has every fix. A copy the user named,
+    annotated or marked is left alone. Restorable from the trash like any deleted ride."""
+    group = _members(conn, main_id)
+    if len(group) < 2:
+        return []
+    rows = {r["id"]: r for r in conn.execute(
+        f"SELECT id, creator, started_at, ended_at, point_count, name_edited, notes, feeling, primary_id"
+        f" FROM rides WHERE id IN ({','.join('?' * len(group))}) AND trashed_at IS NULL", group)}
+    dropped = []
+    for a in rows.values():
+        if a["id"] in dropped or a["name_edited"] or a["notes"] or a["feeling"] is not None:
+            continue
+        if conn.execute("SELECT 1 FROM ride_marks WHERE ride_id = ?", (a["id"],)).fetchone():
+            continue
+        for b in rows.values():
+            if b["id"] == a["id"] or b["id"] in dropped or b["creator"] != a["creator"]:
+                continue
+            inside = b["started_at"] - COPY_SLACK_S <= a["started_at"] and a["ended_at"] <= b["ended_at"] + COPY_SLACK_S
+            bigger = (b["point_count"], -b["id"]) > (a["point_count"], -a["id"])  # keep the fuller one
+            if not (inside and bigger):
+                continue
+            med = median_distance_m(_track(conn, a["id"]), _track(conn, b["id"]))
+            if med is None or med > COPY_MAX_M:
+                continue
+            dropped.append(a["id"])
+            break
+    if dropped:
+        with tx(conn):
+            for rid in dropped:
+                conn.execute("UPDATE rides SET trashed_at = ? WHERE id = ?", (time.time(), rid))
+            main = conn.execute("SELECT primary_id IS NULL AND trashed_at IS NULL FROM rides WHERE id = ?", (main_id,)).fetchone()[0]
+            if not main:  # the main one was the copy: the best of the rest takes over
+                rest = [r for r in group if r not in dropped]
+                _make_main(conn, rest, _best(conn, rest))
+        log.info("trashed %s: the same recording exported twice", dropped)
+    return dropped
+
+
+def drop_all_copies(conn: sqlite3.Connection) -> int:
+    """drop_copies() for every trip with several recordings (startup pass for existing data)."""
+    n = 0
+    for (main,) in conn.execute(
+        "SELECT r.id FROM rides r WHERE r.primary_id IS NULL AND r.trashed_at IS NULL"
+        " AND EXISTS (SELECT 1 FROM rides o WHERE o.primary_id = r.id AND o.trashed_at IS NULL)"
+    ).fetchall():
+        n += len(drop_copies(conn, main))
+    return n

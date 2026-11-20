@@ -199,3 +199,49 @@ def test_match_ride_stores_passes_and_stats(tmp_path):
     # a trashed ride no longer counts
     conn.execute("UPDATE rides SET trashed_at = 1 WHERE id = ?", (rid,))
     assert segments.road_stats(conn) == []
+
+
+def test_sidewalk_without_link_to_the_road_is_still_reachable():
+    # the rider comes along a side street onto the road, then rides the sidewalk 8 m beside it;
+    # the map links the sidewalk to nothing in between (as on prospekt Svobody)
+    lines = [
+        _street("minor", (0, -200), (0, 0)),
+        _street("secondary", (0, 0), (500, 0)),
+        _street("path", (20, 8), (480, 8), sub="footway"),
+    ]
+    g = build_graph(lines)
+    trs = match(g, _ride([(0, -200), (0, 0), (20, 8), (480, 8)], noise_m=2.5))
+    by = {}
+    for tr in trs:
+        k = g.segments[tr.segment_id].props.get("subclass") or g.segments[tr.segment_id].props["class"]
+        by[k] = by.get(k, 0) + tr.dist_m
+    assert by.get("footway", 0) > 400 and by.get("secondary", 0) < 60
+
+
+def test_impossible_speeds_are_not_matched():
+    # two streets 30 m apart connected only by a 2 km loop: a fast "route" between consecutive
+    # fixes would mean ~60 km/h+ through the loop; the matcher must not invent it
+    lines = [
+        _street("minor", (0, 0), (300, 0)),
+        _street("minor", (300, 0), (300, 1000), (330, 1000), (330, 30)),
+        _street("minor", (330, 30), (600, 30)),
+    ]
+    g = build_graph(lines)
+    trs = match(g, _ride([(0, 0), (300, 0), (330, 30), (600, 30)], noise_m=1.5))
+    for tr in trs:
+        dt = tr.exit_t - tr.enter_t
+        assert dt <= 0 or tr.dist_m / dt <= matching.MAX_SPEED_MPS
+    assert sum(tr.dist_m for tr in trs) < 700  # no 2 km detour
+
+
+def test_standing_still_is_not_matched():
+    g = build_graph([_street("minor", (0, 0), (300, 0)), _street("service", (0, 20), (300, 20))])
+    pts = _ride([(0, 0), (300, 0)], noise_m=1.5)
+    n = len(pts.t)
+    # 60 s of wobble at the start, flagged as not moving (as clean.py does)
+    wobble = _ride([(0, 0), (0, 20), (0, 0), (0, 20)] * 5, noise_m=6, seed=7)
+    k = len(wobble.t)
+    pts = Points(wobble.t + [t + k for t in pts.t], wobble.lat + pts.lat, wobble.lon + pts.lon,
+                 [0.0] * k + pts.dist, [0] * (k + n), [0] * k + [1] * n)
+    trs = match(g, pts)
+    assert all(g.segments[tr.segment_id].props["class"] == "minor" for tr in trs)

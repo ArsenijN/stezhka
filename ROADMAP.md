@@ -48,8 +48,8 @@ speed; *My roads* map layer (colour = typical speed, width = how often).
 
 Next:
 - Per-ride view of its segments: where this ride was slower/faster than usual.
-- Road vs sidewalk next to it: GPS cannot tell them apart (5-15 m). Options: treat a footway
-  alongside a street as part of it for statistics, or ask the user once per street.
+- v0.5.1: sidewalks reachable without a mapped link, impossible speeds rejected, standing fixes
+  ignored, duplicate exports of one recording trashed automatically. Sidewalks stay separate.
 - Marks (v0.4.4) attached to the matched segments, shown on *My roads*.
 - Statistics split by wetness, time of day, bike; spread and sample count in the popup.
 - Junction costs: time lost at each junction / crossing (stops already detected).

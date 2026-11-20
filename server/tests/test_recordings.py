@@ -139,3 +139,21 @@ def test_preferred_recorder_applies_to_new_trips(client, cfg):
     conn.execute("UPDATE rides SET creator = 'Phone B' WHERE id = ?", (b,))
     upload(client, phone_a())  # denser, but not the preferred app
     assert listed(client) == [b]
+
+
+def test_same_recording_exported_twice_goes_to_the_trash(client):
+    full = upload(client, phone_a())
+    partial = upload(client, to_gpx(commute().points[:100], name="exported mid-ride"))  # same app, same fixes
+    other_phone = upload(client, phone_b())
+    assert listed(client) == [full]
+    ride = client.get(f"/api/rides/{full}").json()
+    assert [r["id"] for r in ride["recordings"]] == [other_phone]  # the second phone stays
+    assert [r["id"] for r in client.get("/api/trash").json()["rides"]] == [partial]  # restorable
+
+
+def test_annotated_copy_is_kept(client):
+    partial = upload(client, to_gpx(commute().points[:100]))
+    client.patch(f"/api/rides/{partial}", json={"notes": "keep me"})
+    full = upload(client, phone_a())
+    assert client.get("/api/trash").json()["rides"] == []
+    assert partial in [r["id"] for r in client.get(f"/api/rides/{full}").json()["recordings"]]

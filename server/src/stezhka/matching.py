@@ -19,13 +19,19 @@ from dataclasses import dataclass
 
 from .roads import Graph, Segment, grid, lonlat, metres_per_unit
 
-MATCH_VERSION = 1
+MATCH_VERSION = 2
 SIGMA_M = 10.0  # GPS noise (phones: ~5 m in the open, 15 m+ in a pocket or between buildings)
 BETA_M = 10.0  # tolerance for route length vs straight-line difference
 RADIUS_M = 35.0  # candidates within this distance of a fix
 MAX_CANDIDATES = 8
 STEP_M = 8.0  # use a fix only every ~8 m (1 Hz at walking pace adds nothing but time)
 MAX_GAP_S = 60.0  # longer gap between fixes: start a new chain
+# A bike hops between a road and the sidewalk next to it anywhere (driveways, ramps), but the map
+# links them only at a few crossings: without this, a ride that started on the road stayed on it
+# for a whole street even with every fix closer to the sidewalk (seen on prospekt Svobody).
+JUMP_M = 25.0  # a sideways switch to another way this close is allowed without a mapped link
+JUMP_COST = 1.0  # log-probability cost of such a switch (~ 10 m of route mismatch)
+MAX_SPEED_MPS = 16.0  # ~58 km/h: a route needing more than this between two fixes is not real
 
 
 @dataclass(slots=True)
@@ -33,6 +39,9 @@ class Candidate:
     seg: Segment
     offset: float  # metres from seg.a
     dist: float  # metres from the fix
+    x: float = 0.0  # the position on the segment (grid units)
+    y: float = 0.0
+    mpu: float = 1.0
 
 
 @dataclass(slots=True)
@@ -76,7 +85,7 @@ class _Index:
                     prev = best.get(seg.id)
                     if prev is None or dm < prev.dist:
                         off = seg.cum[i] + t * (seg.cum[i + 1] - seg.cum[i])
-                        best[seg.id] = Candidate(seg, off, dm)
+                        best[seg.id] = Candidate(seg, off, dm, x0 + t * dx, y0 + t * dy, mpu)
         return sorted(best.values(), key=lambda cd: cd.dist)[:MAX_CANDIDATES]
 
 
@@ -121,11 +130,14 @@ def _distance(a: Candidate, b: Candidate, dist: dict) -> tuple[float, str | None
 
 
 def _downsample(pts) -> list[int]:
-    """Indices of fixes to match: one every STEP_M, always the first/last of each recording segment."""
+    """Indices of fixes to match: one every STEP_M, always the first/last of each recording segment.
+    Fixes while standing (pts.moving == 0) are left out: their wobble drew tangles near home."""
     keep = []
     last = None
     n = len(pts.t)
     for i in range(n):
+        if pts.moving is not None and not pts.moving[i]:
+            continue
         boundary = i == 0 or i == n - 1 or pts.segment[i] != pts.segment[i - 1] or (i + 1 < n and pts.segment[i + 1] != pts.segment[i])
         if boundary or last is None or pts.dist[i] - pts.dist[last] >= STEP_M:
             keep.append(i)
@@ -142,6 +154,7 @@ class Points:
     lon: list[float]
     dist: list[float]
     segment: list[int]
+    moving: list[int] | None = None
 
 
 def match(g: Graph, pts: Points) -> list[Traversal]:
@@ -207,11 +220,18 @@ def _viterbi(g, pts, keep, cands, chain):
                 continue
             dist, prev = _route(g, a, limit)
             routes[ai] = prev
+            dt = max(pts.t[ib] - pts.t[ia], 0.5)
             for bi, b in enumerate(cur_c):
                 r, via = _distance(a, b, dist)
+                cost = 0.0
                 if r == math.inf or r > limit:
+                    jump = math.hypot(b.x - a.x, b.y - a.y) * a.mpu
+                    if jump > JUMP_M or a.seg.id == b.seg.id:
+                        continue
+                    r, via, cost = jump, "jump", JUMP_COST
+                if r / dt > MAX_SPEED_MPS:
                     continue
-                sc = score[ai] - abs(r - gc) / BETA_M - 0.5 * (b.dist / SIGMA_M) ** 2
+                sc = score[ai] - abs(r - gc) / BETA_M - cost - 0.5 * (b.dist / SIGMA_M) ** 2
                 if sc > new[bi]:
                     new[bi] = sc
                     bk[bi] = (ai, via)
@@ -257,6 +277,8 @@ def _traverse(g: Graph, pts: Points, keep, chain, picks) -> list[Traversal]:
         b, (via, prev) = picks[s]
         ta, tb = pts.t[keep[chain[s - 1]]], pts.t[keep[chain[s]]]
         pieces: list[tuple[str, float, float, float]] = []  # (segment id, from_off, to_off, length)
+        if via == "jump":  # hopped sideways (road <-> sidewalk): no distance on either way
+            continue
         if via is None:  # along the same segment
             pieces.append((a.seg.id, a.offset, b.offset, abs(b.offset - a.offset)))
         else:
