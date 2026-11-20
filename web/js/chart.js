@@ -34,7 +34,10 @@ export class ProfileChart {
     // Mouse: hover follows, click pins. Touch: the finger scrubs along the profile and the point under
     // it when lifted is pinned (a 'click' would only report where the touch started).
     // Marking mode: press, drag along the profile, release = that stretch (a tap = one spot).
+    // A press must start on the profile: releasing a map drag over it is not a click here.
+    this.pressed = null;
     canvas.addEventListener('pointerdown', (e) => {
+      this.pressed = e.pointerId;
       if (e.pointerType !== 'mouse') canvas.setPointerCapture(e.pointerId);
       if (this.selectDone && (e.pointerType !== 'mouse' || e.button === 0)) {
         canvas.setPointerCapture(e.pointerId);
@@ -44,6 +47,7 @@ export class ProfileChart {
       this._pointer(e);
     });
     canvas.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'mouse' && e.buttons && this.pressed !== e.pointerId) return; // dragging the map across
       if (this.selection?.dragging) {
         const i = this._indexAt(e);
         if (i != null) this.selection.b = i;
@@ -51,6 +55,9 @@ export class ProfileChart {
       this._pointer(e);
     });
     canvas.addEventListener('pointerup', (e) => {
+      const ours = this.pressed === e.pointerId;
+      this.pressed = null;
+      if (!ours) return;
       if (this.selection?.dragging) {
         const { a, b } = this.selection;
         this.selection = { a: Math.min(a, b), b: Math.max(a, b) };
@@ -68,7 +75,7 @@ export class ProfileChart {
       for (const fn of this.selectHandlers) fn(i);
       if (e.pointerType !== 'mouse') { this.setCursor(null); this._emit(null); }
     });
-    canvas.addEventListener('pointercancel', () => { this.setCursor(null); this._emit(null); });
+    canvas.addEventListener('pointercancel', () => { this.pressed = null; this.setCursor(null); this._emit(null); });
     canvas.addEventListener('pointerleave', (e) => {
       if (e.pointerType === 'mouse') { this.setCursor(null); this._emit(null); }
     });

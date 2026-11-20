@@ -19,6 +19,7 @@ from . import weather
 from .db import tx
 from .dem import DEM_VERSION, Dem, smooth_by_distance
 from .process import climb
+from .segments import bridge_spans
 
 log = logging.getLogger(__name__)
 
@@ -27,9 +28,39 @@ ELE_HYSTERESIS_M = 2.0  # DEM is smooth; 2 m keeps real rollers, drops grid nois
 _ERRORS = (OSError, ValueError, urllib.error.URLError, sqlite3.OperationalError)
 
 
+def bridge_over(values: list[float | None], t: list[float], dist: list[float],
+                spans: list[tuple[float, float]]) -> list[float | None]:
+    """On bridges and in tunnels, a straight line between the last value before and the first after.
+
+    The DEM is a surface model: on a bridge it reads the river below (a 5-10 m dip and climb that
+    never happened), in a tunnel the hill above. Matched passes say when the ride was on one.
+    """
+    out = list(values)
+    n = len(out)
+    for t0, t1 in spans:
+        inside = [i for i in range(n) if t0 <= t[i] <= t1]
+        if not inside:
+            continue
+        a = next((i for i in range(inside[0] - 1, -1, -1) if values[i] is not None), None)
+        b = next((i for i in range(inside[-1] + 1, n) if values[i] is not None), None)
+        if a is None and b is None:
+            continue
+        ea = values[a] if a is not None else values[b]
+        eb = values[b] if b is not None else values[a]
+        da = dist[a] if a is not None else dist[inside[0]]
+        db = dist[b] if b is not None else dist[inside[-1]]
+        for i in inside:
+            f = 0.0 if db == da else (dist[i] - da) / (db - da)
+            out[i] = ea + f * (eb - ea)
+    return out
+
+
 def enrich_elevation(conn: sqlite3.Connection, dem: Dem, ride_id: int) -> bool:
-    pts = conn.execute("SELECT idx, lat, lon, dist FROM points WHERE ride_id = ? ORDER BY idx", (ride_id,)).fetchall()
+    pts = conn.execute("SELECT idx, t, lat, lon, dist FROM points WHERE ride_id = ? ORDER BY idx", (ride_id,)).fetchall()
     raw = dem.profile([p["lat"] for p in pts], [p["lon"] for p in pts])
+    spans = bridge_spans(conn, ride_id)
+    if spans:
+        raw = bridge_over(raw, [p["t"] for p in pts], [p["dist"] for p in pts], spans)
     covered = any(v is not None for v in raw)
     smooth = smooth_by_distance(raw, [p["dist"] for p in pts]) if covered else raw
     up, down = climb(smooth, ELE_HYSTERESIS_M) if covered else (None, None)

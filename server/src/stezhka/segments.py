@@ -136,7 +136,30 @@ def match_ride(conn: sqlite3.Connection, source: RoadSource, names: _Names, ride
                 ((ride_id, i, t.segment_id, t.enter_t, t.exit_t, t.from_off, t.to_off, t.dist_m) for i, t in enumerate(trs)),
             )
         conn.execute("UPDATE rides SET match_version = ?, match_error = NULL WHERE id = ?", (MATCH_VERSION, ride_id))
+        # elevation over bridges/tunnels depends on the match (enrich.bridge_over): compute it again
+        if bridge_spans(conn, ride_id):
+            conn.execute("UPDATE rides SET dem_version = 0 WHERE id = ? AND ele_source = 'dem'", (ride_id,))
     return len(trs)
+
+
+BRIDGED = ("bridge", "tunnel")  # the DEM shows the river / hill under these, not the deck
+SPAN_JOIN_S = 2.0  # bridge passes this close in time are one crossing (a bridge split into pieces)
+
+
+def bridge_spans(conn: sqlite3.Connection, ride_id: int) -> list[tuple[float, float]]:
+    """Time spans of a matched ride on bridges and in tunnels, consecutive pieces joined."""
+    rows = conn.execute(
+        f"SELECT rs.enter_t, rs.exit_t FROM ride_segments rs JOIN road_segments s ON s.id = rs.segment_id"
+        f" WHERE rs.ride_id = ? AND s.brunnel IN ({','.join('?' * len(BRIDGED))}) ORDER BY rs.seq",
+        (ride_id, *BRIDGED),
+    ).fetchall()
+    spans: list[list[float]] = []
+    for a, b in rows:
+        if spans and a - spans[-1][1] <= SPAN_JOIN_S:
+            spans[-1][1] = max(spans[-1][1], b)
+        else:
+            spans.append([a, b])
+    return [(a, b) for a, b in spans]
 
 
 def pending(conn: sqlite3.Connection, limit: int = 50) -> list[int]:

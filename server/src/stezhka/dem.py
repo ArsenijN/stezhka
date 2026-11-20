@@ -31,7 +31,7 @@ import tifffile
 
 log = logging.getLogger(__name__)
 
-DEM_VERSION = 1  # bump when sampling/smoothing changes, to re-enrich stored rides
+DEM_VERSION = 2  # 2: bridges and tunnels bridged over (v0.5.8); bump when sampling/smoothing changes, to re-enrich stored rides
 BASE_URL = "https://copernicus-dem-30m.s3.amazonaws.com"
 USER_AGENT = "stezhka-dem/1"
 ATTRIBUTION = "Copernicus DEM © DLR e.V., Airbus DS (EU/ESA)"

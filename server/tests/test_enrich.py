@@ -200,3 +200,32 @@ def test_source_choice(monkeypatch):
         with pytest.raises(ValueError):  # empty response = incomplete
             weather.fetch_hours(48.6, 22.3, start, start + 3600)
     assert urls[0].startswith(weather.HISTORICAL_FORECAST_URL) and urls[1].startswith(weather.ARCHIVE_URL)
+
+
+def test_bridges_take_the_line_between_their_ends(tmp_path):
+    from synth import LON0
+
+    from stezhka import segments
+
+    conn = connect(tmp_path / "db.sqlite3")
+    rid = import_bytes(conn, tmp_path / "raw", Builder().ride(60, 5.0).gpx(), "r.gpx").ride_id
+    lon_m = 111_320 * math.cos(math.radians(LAT0))
+
+    class RiverDem:  # flat 120 m with a 10 m deep river valley 100-160 m east of the start
+        def profile(self, lats, lons):
+            return [110.0 if 100 <= (lon - LON0) * lon_m <= 160 else 120.0 for lon in lons]
+
+    enrich.enrich_elevation(conn, RiverDem(), rid)
+    assert conn.execute("SELECT ascent_m FROM rides WHERE id = ?", (rid,)).fetchone()[0] > 5  # the phantom climb
+    # matched: the ride crossed a bridge from 20 s (100 m) to 32 s (160 m), in two pieces
+    t0 = conn.execute("SELECT MIN(t) FROM points WHERE ride_id = ?", (rid,)).fetchone()[0] - 1
+    conn.executemany("INSERT INTO road_segments(id, class, brunnel, length_m, geom) VALUES (?, 'minor', 'bridge', 30, '[]')",
+                     [("b1",), ("b2",)])
+    conn.executemany(
+        "INSERT INTO ride_segments(ride_id, seq, segment_id, enter_t, exit_t, from_off, to_off, dist_m) VALUES (?,?,?,?,?,0,30,30)",
+        [(rid, 0, "b1", t0 + 20, t0 + 26), (rid, 1, "b2", t0 + 26, t0 + 32)],
+    )
+    assert segments.bridge_spans(conn, rid) == [(t0 + 20, t0 + 32)]
+    enrich.enrich_elevation(conn, RiverDem(), rid)
+    assert conn.execute("SELECT ascent_m FROM rides WHERE id = ?", (rid,)).fetchone()[0] < 1
+    assert conn.execute("SELECT MIN(ele_dem) FROM points WHERE ride_id = ?", (rid,)).fetchone()[0] > 119
